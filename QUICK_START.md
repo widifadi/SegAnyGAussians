@@ -24,10 +24,12 @@ This guide helps you set up SegAnyGAussians on another PC using the provided env
 
 ```cmd
 cd D:\Work\Softwares
-git clone https://github.com/YOUR_USERNAME/SegAnyGAussians.git
-cd SegAnyGAussians\SegAnyGAussians
+git clone https://github.com/Jumpat/SegAnyGAussians.git
+cd SegAnyGAussians
 git submodule update --init --recursive
 ```
+
+**Note**: If you're using a fork, replace the URL with your fork's URL.
 
 ### Step 2: Create Environment from YAML
 

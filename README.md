@@ -1,6 +1,6 @@
 # SAGA (AAAI 25)
 
-The official implementation of [SAGA (Segment Any 3D GAussians)](https://arxiv.org/abs/2312.00860). 
+The official implementation of [SAGA (Segment Any 3D GAussians)](https://arxiv.org/abs/2312.00860).
 <!-- Please refer to our [project page](https://jumpat.github.io/SAGA/) for more information.  -->
 <br>
 <!-- <br> -->
@@ -8,21 +8,44 @@ The official implementation of [SAGA (Segment Any 3D GAussians)](https://arxiv.o
 <img src="./assets/saga-teaser.png" width="700px">
 </div>
 
+---
+
+## 🪟 Windows-Compatible Fork
+
+> **This fork adds Windows compatibility and modern PyTorch/NumPy support.**
+>
+> - ✅ Python 3.10 + PyTorch 2.0.1 + CUDA 11.8
+> - ✅ Windows 10/11 tested and working
+> - ✅ Streamlined installation (~1 hour)
+> - 📖 See [QUICK_START.md](QUICK_START.md) for Windows installation
+> - 📋 See [CHANGES_SUMMARY.md](CHANGES_SUMMARY.md) for details
+>
+> **Original repository**: [Jumpat/SegAnyGAussians](https://github.com/Jumpat/SegAnyGAussians)
+
+---
+
 # Installation
-The installation of SAGA is similar to [3D Gaussian Splatting](https://github.com/graphdeco-inria/gaussian-splatting).
-```bash
-git clone git@github.com:Jumpat/SegAnyGAussians.git
-```
-or
+
+## Windows Installation
+
+For **Windows users**, follow the streamlined guide:
+
+📖 **Quick Start**: [QUICK_START.md](QUICK_START.md) - 9-step installation (~1 hour)
+
+📚 **Detailed Guide**: [WINDOWS_INSTALLATION.txt](WINDOWS_INSTALLATION.txt) - Complete 17-step guide with troubleshooting
+
+## Linux Installation
+
+The installation is similar to [3D Gaussian Splatting](https://github.com/graphdeco-inria/gaussian-splatting):
+
 ```bash
 git clone https://github.com/Jumpat/SegAnyGAussians.git
-```
-Then install the dependencies:
-```bash
+cd SegAnyGAussians
 conda env create --file environment.yml
-conda activate gaussian_splatting
+conda activate SAGA
 ```
-In default, we use the public ViT-H model for SAM. You can download the pre-trained model from [here](https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth) and put it under ./third_party/segment-anything/sam_ckpt.
+
+Download the SAM model checkpoint from [here](https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth) and place it under `./third_party/segment-anything/sam_ckpt`.
 
 ## Prepare Data
 
