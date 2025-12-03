@@ -1,10 +1,19 @@
 # Claude Conversation History - SegAnyGAussians Windows Fork
 
+> 📝 **Note**: This file documents the Windows fork preparation and git workflow.
+> For Docker development workflow, see [`docker/CLAUDE.md`](docker/CLAUDE.md).
+>
+> **To continue this conversation**: Share this file with Claude and reference specific sections.
+
+---
+
 ## Session Overview
 
 **Date**: 2025-12-03
 **Goal**: Prepare Windows-compatible SegAnyGAussians fork for public release
 **Status**: ✅ Complete - Ready to push to GitHub
+**Branch**: `v2_cu118`
+**Repository**: [widifadi/SegAnyGAussians](https://github.com/widifadi/SegAnyGAussians)
 
 ---
 
