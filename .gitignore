@@ -39,10 +39,15 @@ Thumbs.db
 *.tmp
 *.log
 *.bak
+*_OLD_BACKUP.txt
+*_BACKUP.*
 
 # Diagnostic scripts (temporary)
 diagnose_numpy.py
 run_diagnostics.bat
+
+# Accidental directories
+5.8.0/
 
 # Output directories (optional - uncomment if you want to exclude)
 # output/
