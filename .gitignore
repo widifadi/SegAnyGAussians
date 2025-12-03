@@ -1,0 +1,49 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.Python
+
+# PyTorch
+*.pth
+*.pt
+*.ckpt
+
+# CUDA Extensions Build Artifacts
+submodules/diff-gaussian-rasterization/build/
+submodules/diff-gaussian-rasterization-depth/build/
+submodules/diff-gaussian-rasterization_contrastive_f/build/
+submodules/simple-knn/build/
+*.cu.o
+
+# Conda Environment
+.conda/
+*.tar.bz2
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.log
+*.bak
+
+# Diagnostic scripts (temporary)
+diagnose_numpy.py
+run_diagnostics.bat
+
+# Output directories (optional - uncomment if you want to exclude)
+# output/
+# results/
