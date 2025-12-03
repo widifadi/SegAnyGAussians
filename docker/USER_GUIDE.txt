@@ -1,0 +1,355 @@
+SegAnyGaussians (SAGA) User Guide
+==================================
+
+OVERVIEW:
+SAGA (Segment Any 3D Gaussians) is an interactive 3D segmentation tool that works with
+pre-trained 3D Gaussian Splatting models. It attaches low-dimensional 3D features to
+Gaussians and uses the Segment Anything Model (SAM) for feature extraction and segmentation.
+
+Official Repository: https://github.com/Jumpat/SegAnyGAussians
+
+================================================================================
+TABLE OF CONTENTS
+================================================================================
+1. Prerequisites
+2. Data Preparation and Feature Extraction
+3. Training Workflow
+4. Interactive Segmentation
+5. Rendering Segmented Results
+6. Docker-Specific Instructions
+7. Troubleshooting
+
+================================================================================
+1. PREREQUISITES
+================================================================================
+
+SYSTEM REQUIREMENTS:
+- NVIDIA GPU with CUDA 11.6/11.8 support
+- Minimum 8GB GPU memory recommended
+- 16GB+ system RAM recommended
+- Docker with GPU support (nvidia-docker2)
+
+SUPPORTED DATASETS:
+- 360_v2 (Mip-NeRF 360 format)
+- nerf_llff_data (LLFF format)
+- LERF (Language Embedded Radiance Fields format)
+
+SAM MODEL:
+The SAM ViT-H model checkpoint is pre-downloaded in the Docker image at:
+/workspace/SegAnyGAussians/third_party/segment-anything/sam_ckpt/sam_vit_h_4b8939.pth
+
+================================================================================
+2. DATA PREPARATION
+================================================================================
+
+DATASET STRUCTURE:
+Your dataset should be organized as follows:
+```
+data/
+└── your_scene/
+    ├── images/           # Input images from multiple viewpoints
+    ├── sparse/           # COLMAP sparse reconstruction (optional)
+    └── transforms.json   # Camera poses (for NeRF format)
+```
+
+Note: Feature extraction happens AFTER training the 3DGS model (see workflow below).
+
+================================================================================
+3. TRAINING WORKFLOW (CORRECT ORDER FOR V2 BRANCH)
+================================================================================
+
+The complete workflow consists of 5 main steps IN THIS ORDER:
+
+STEP 1: PRE-TRAIN 3D GAUSSIAN SPLATTING MODEL (DO THIS FIRST!)
+Train the base 3D Gaussian Splatting representation:
+
+```bash
+python train_scene.py -s /workspace/data/your_scene
+```
+
+Common options:
+```bash
+python train_scene.py \
+  -s /workspace/data/your_scene \          # Source dataset path
+  -m /workspace/output/your_scene \        # Model output path (optional)
+  --iterations 30000 \                     # Training iterations (default: 30000)
+  --test_iterations 7000 15000 30000 \     # Evaluation checkpoints
+  --save_iterations 7000 15000 30000       # Save checkpoints
+```
+
+Training time: Typically 15-30 minutes on modern GPUs
+
+STEP 2: EXTRACT SEGMENT EVERYTHING MASKS
+After training 3DGS, extract SAM segmentation masks:
+
+```bash
+python extract_segment_everything_masks.py \
+  --image_root /workspace/data/your_scene/images \
+  --sam_checkpoint_path /workspace/SegAnyGAussians/third_party/segment-anything/sam_ckpt/sam_vit_h_4b8939.pth \
+  --downsample 1
+```
+
+Parameters:
+- --image_root: Path to your image directory
+- --sam_checkpoint_path: Path to SAM model checkpoint
+- --downsample: Downsample factor (1, 2, 4, or 8). Use 1 for full resolution
+
+This creates automatic segmentation masks for all objects in the scene.
+
+STEP 3: GET MASK SCALES
+Calculate scales for the extracted masks:
+
+```bash
+python get_scale.py -m /workspace/output/your_scene
+```
+
+This step computes scale information needed for contrastive feature training.
+
+STEP 4: (OPTIONAL) EXTRACT CLIP FEATURES
+For open-vocabulary segmentation, extract CLIP features:
+
+```bash
+python get_clip_features.py -m /workspace/output/your_scene
+```
+
+Skip this step if you only need point-based segmentation.
+
+STEP 5: TRAIN 3D GAUSSIAN AFFINITY FEATURES
+Train contrastive features for segmentation:
+
+```bash
+python train_contrastive_feature.py -m /workspace/output/your_scene
+```
+
+Parameters:
+- -m: Path to the pre-trained 3DGS model from Step 1
+
+This step learns discriminative 3D features that enable accurate segmentation.
+
+STEP 6: PERFORM 3D SEGMENTATION
+Use the interactive GUI for segmentation:
+
+```bash
+python saga_gui.py -m /workspace/output/your_scene
+```
+
+The GUI provides point-based interactive segmentation capabilities.
+
+================================================================================
+4. INTERACTIVE SEGMENTATION
+================================================================================
+
+USING THE JUPYTER NOTEBOOK:
+The prompt_segmenting.ipynb notebook provides an interactive interface for:
+- Point-based segmentation (click on objects)
+- Multiple point selection for complex objects
+- Real-time preview of segmentation results
+- 3D clustering and grouping
+- Open-vocabulary segmentation (text-based queries)
+
+SEGMENTATION MODES:
+
+1. SINGLE POINT SELECTION:
+   - Click on the object you want to segment
+   - The system will segment the entire object based on 3D features
+
+2. MULTI-POINT SELECTION:
+   - Add multiple points for complex objects
+   - Helps refine segmentation boundaries
+   - Useful for objects with varying appearance
+
+3. 2D PREVIEW:
+   - Preview segmentation in 2D views before applying to 3D
+   - Verify segmentation quality across multiple viewpoints
+
+VIEWPOINT CONTROLS:
+- Rotate: Change viewing angle
+- Pan: Move the camera position
+- Zoom: Adjust view distance
+
+VISUALIZATION OPTIONS:
+- RGB rendering: Standard photorealistic view
+- PCA feature visualization: View learned 3D features
+- Similarity mapping: Visualize feature similarity
+- 3D clustering: See grouped Gaussians by similarity
+
+================================================================================
+5. RENDERING SEGMENTED RESULTS
+================================================================================
+
+RENDER SEGMENTED SCENE:
+After segmentation, render the scene with segmentation overlays:
+
+```bash
+python render.py \
+  -m /workspace/output/your_scene \
+  --precomputed_mask /workspace/output/your_scene/masks/segment_001.png \
+  --target scene \
+  --segment
+```
+
+Parameters:
+- -m: Path to trained model
+- --precomputed_mask: Path to segmentation mask
+- --target: Render target ('scene', 'object', etc.)
+- --segment: Enable segmentation overlay
+
+RENDER 2D SEGMENTATION MASKS:
+Generate 2D segmentation masks for all views:
+
+```bash
+python render.py \
+  -m /workspace/output/your_scene \
+  --precomputed_mask /workspace/output/your_scene/masks/segment_001.png \
+  --target masks
+```
+
+ADDITIONAL RENDERING OPTIONS:
+```bash
+python render.py \
+  -m /workspace/output/your_scene \
+  --iteration 30000 \              # Use specific checkpoint
+  --skip_train \                   # Skip training views
+  --skip_test \                    # Skip test views
+  --quiet                          # Suppress verbose output
+```
+
+================================================================================
+6. DOCKER-SPECIFIC INSTRUCTIONS
+================================================================================
+
+STARTING THE CONTAINER:
+```bash
+docker run --gpus all -it --rm \
+  -v D:/Work/Softwares/SegAnyGaussians/data:/workspace/data \
+  -v D:/Work/Softwares/SegAnyGaussians/output:/workspace/output \
+  seganygaussians:latest
+```
+
+IMPORTANT PATHS IN CONTAINER:
+- Working directory: /workspace/SegAnyGAussians
+- Python environment: Auto-activated via entrypoint
+- SAM checkpoint: /workspace/SegAnyGAussians/third_party/segment-anything/sam_ckpt/
+- Data mount: /workspace/data
+- Output mount: /workspace/output
+
+RUNNING JUPYTER NOTEBOOK IN DOCKER:
+```bash
+docker run --gpus all -it --rm \
+  -v D:/Work/Softwares/SegAnyGaussians/data:/workspace/data \
+  -v D:/Work/Softwares/SegAnyGaussians/output:/workspace/output \
+  -p 8888:8888 \
+  seganygaussians:latest \
+  jupyter notebook --ip=0.0.0.0 --port=8888 --no-browser --allow-root
+```
+
+Then access the notebook at: http://localhost:8888
+
+FILE PERSISTENCE:
+- All files in /workspace/data and /workspace/output are persisted
+- Files elsewhere in the container are lost when container stops
+- Always save results to mounted volumes
+
+================================================================================
+7. TROUBLESHOOTING
+================================================================================
+
+ISSUE: Out of memory during training
+SOLUTION:
+- Reduce image resolution with --resolution parameter
+- Use --downsample 2 or 4 in feature extraction
+- Reduce --iterations if needed
+- Close other GPU applications
+
+ISSUE: SAM checkpoint not found
+SOLUTION:
+- Verify SAM model is at: /workspace/SegAnyGAussians/third_party/segment-anything/sam_ckpt/
+- In Docker, it should be pre-downloaded
+- If missing, download manually from: https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth
+
+ISSUE: Poor segmentation quality
+SOLUTION:
+- Ensure 3DGS training converged (check training loss)
+- Train contrastive features for more iterations
+- Use higher resolution images (--downsample 1)
+- Add more viewpoints to your dataset
+- Try multiple click points for complex objects
+
+ISSUE: Training is very slow
+SOLUTION:
+- Check GPU utilization with nvidia-smi
+- Reduce image resolution
+- Decrease number of training iterations
+- Ensure CUDA 11.6/11.8 drivers are installed
+
+ISSUE: Cannot access GPU in Docker
+SOLUTION:
+- Verify nvidia-docker2: docker run --gpus all nvidia/cuda:11.8.0-base-ubuntu20.04 nvidia-smi
+- Check Docker daemon configuration includes nvidia runtime
+- Restart Docker service if needed
+- Ensure GPU drivers are compatible with CUDA 11.8
+
+ISSUE: Jupyter notebook kernel dies
+SOLUTION:
+- Out of memory - reduce batch size or image resolution
+- Restart container with more shared memory: --shm-size=8g
+- Check container logs: docker logs <container_id>
+
+================================================================================
+COMPLETE EXAMPLE WORKFLOW
+================================================================================
+
+Here is a complete example from start to finish:
+
+# 1. Start Docker container
+docker run --gpus all -it --rm \
+  -v D:/Work/Softwares/SegAnyGaussians/data:/workspace/data \
+  -v D:/Work/Softwares/SegAnyGaussians/output:/workspace/output \
+  seganygaussians:latest
+
+# 2. Train 3D Gaussian Splatting model (DO THIS FIRST!)
+python train_scene.py -s /workspace/data/garden -m /workspace/output/garden
+
+# 3. Extract segmentation masks (AFTER training 3DGS)
+python extract_segment_everything_masks.py \
+  --image_root /workspace/data/garden/images \
+  --sam_checkpoint_path /workspace/SegAnyGAussians/third_party/segment-anything/sam_ckpt/sam_vit_h_4b8939.pth \
+  --downsample 1
+
+# 4. Get mask scales
+python get_scale.py -m /workspace/output/garden
+
+# 5. (Optional) Extract CLIP features for open-vocabulary segmentation
+python get_clip_features.py -m /workspace/output/garden
+
+# 6. Train contrastive features
+python train_contrastive_feature.py -m /workspace/output/garden
+
+# 7. Perform interactive segmentation using GUI
+python saga_gui.py -m /workspace/output/garden
+
+# 8. (Optional) Render segmented results
+python render.py \
+  -m /workspace/output/garden \
+  --precomputed_mask /workspace/output/garden/masks/segment_001.png \
+  --target scene \
+  --segment
+
+================================================================================
+ADDITIONAL RESOURCES
+================================================================================
+
+- Official Paper: "Segment Any 3D Gaussians" (arXiv:2312.00860)
+- GitHub Repository: https://github.com/Jumpat/SegAnyGAussians
+- 3D Gaussian Splatting: https://github.com/graphdeco-inria/gaussian-splatting
+- Segment Anything Model: https://github.com/facebookresearch/segment-anything
+
+CITATION:
+@article{cen2023saga,
+  title={Segment Any 3D Gaussians},
+  author={Jiazhong Cen et al.},
+  year={2023},
+  journal={arXiv preprint arXiv:2312.00860}
+}
+
+For issues and questions, please refer to the GitHub repository issue tracker.

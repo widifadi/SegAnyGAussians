@@ -1,0 +1,103 @@
+SegAnyGAussians Docker Installation Guide
+==========================================
+
+PREREQUISITES:
+- Docker with GPU support (nvidia-docker2)
+- NVIDIA GPU with CUDA support
+- At least 15GB available disk space for build
+- At least 10GB for the final image
+
+BUILD INSTRUCTIONS:
+1. Navigate to the project directory:
+   cd D:/Work/Softwares/SegAnyGaussians
+
+2. Build the Docker image (multi-stage build for optimized size):
+   docker build -t seganygaussians:latest .
+
+   Optional - Build with progress output:
+   docker build --progress=plain -t seganygaussians:latest .
+
+   Optional - Build without cache (fresh build):
+   docker build --no-cache -t seganygaussians:latest .
+
+3. Verify the image was built successfully:
+   docker images seganygaussians:latest
+
+DOCKER IMAGE FEATURES:
+- Multi-stage build for reduced image size
+- Optimized with cache cleanup (pip cache, git history, pycache removed)
+- Uses cuda:11.8.0-runtime base (smaller than devel)
+- Includes all dependencies: PyTorch, PyTorch3D, SAM, custom CUDA extensions
+- SAM model checkpoint pre-downloaded during build
+
+SAVING AND LOADING DOCKER IMAGE:
+If you want to share the image to another machine without rebuilding:
+
+1. Save the Docker image to a tar file:
+   docker save seganygaussians:latest -o seganygaussians.tar
+
+   Or with compression (recommended, significantly smaller):
+   docker save seganygaussians:latest | gzip > seganygaussians.tar.gz
+
+2. Transfer the tar file to another machine (USB drive, network transfer, etc.)
+
+3. Load the Docker image on the target machine:
+   docker load -i seganygaussians.tar
+
+   Or if compressed:
+   docker load -i seganygaussians.tar.gz
+
+4. Verify the image is loaded:
+   docker images seganygaussians:latest
+
+RUNNING THE CONTAINER:
+1. Basic interactive run with GPU support:
+   docker run --gpus all -it --rm seganygaussians:latest
+
+2. Run with data and output directories mounted:
+   docker run --name saga --gpus all -it --rm \
+     -v D:/Work/Softwares/SegAnyGaussians/data:/workspace/data \
+     -v D:/Work/Softwares/SegAnyGaussians/output:/workspace/output \
+     seganygaussians:latest
+
+3. Run with custom working directory mounted (for local development):
+   docker run --gpus all -it --rm \
+     -v D:/Work/Softwares/SegAnyGaussians/data:/workspace/data \
+     -v D:/Work/Softwares/SegAnyGaussians/output:/workspace/output \
+     -v D:/Work/Softwares/SegAnyGaussians/scripts:/workspace/scripts \
+     seganygaussians:latest
+
+4. Test PyTorch and CUDA availability:
+   docker run --gpus all -it --rm seganygaussians:latest \
+     python -c "import torch; print('PyTorch:', torch.__version__); print('CUDA Available:', torch.cuda.is_available())"
+
+USAGE NOTES:
+- The virtual environment is automatically activated via entrypoint script
+- The SAM model (sam_vit_h_4b8939.pth) is pre-downloaded in the image
+- Mount your dataset directory to /workspace/data
+- Mount output directory to /workspace/output for results
+- GUI applications may require X11 forwarding on Linux
+- Working directory inside container: /workspace/SegAnyGAussians
+
+DATASET PREPARATION:
+- Place your datasets in the mounted data directory
+- Supported formats: 360_v2, nerf_llff_data, LERF
+- Ensure proper directory structure as per repository documentation
+
+MEMORY REQUIREMENTS:
+- Minimum 8GB GPU memory recommended
+- 16GB+ system RAM recommended for large datasets
+- Build process requires ~15GB disk space temporarily
+- Final image size: ~8-10GB (compressed tar: ~3-4GB)
+
+TROUBLESHOOTING:
+- If build fails, ensure Docker has sufficient disk space
+- For GUI issues, verify X11 forwarding setup
+- Check CUDA compatibility with your GPU drivers (CUDA 11.8 required)
+- If container fails to start, check nvidia-docker2 installation
+- Verify GPU access with: docker run --gpus all nvidia/cuda:11.8.0-base-ubuntu20.04 nvidia-smi
+
+DOCKERFILE ARCHITECTURE:
+- Stage 1 (Builder): Compiles all CUDA extensions, installs dependencies
+- Stage 2 (Runtime): Copies only necessary files, minimal runtime dependencies
+- This approach reduces final image size by ~40-50%

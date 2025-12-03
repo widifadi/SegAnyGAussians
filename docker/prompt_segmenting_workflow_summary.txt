@@ -1,0 +1,340 @@
+================================================================================
+SEGANYgaussians - prompt_segmenting.ipynb WORKFLOW SUMMARY
+================================================================================
+
+## OVERVIEW
+The notebook provides different segmentation approaches that share global state
+through Jupyter's variable scope. Sections are NOT sequential steps, but rather
+alternative tools/modes that use common initialized variables.
+
+================================================================================
+## WORKFLOW STRUCTURE
+================================================================================
+
+Begin Segmenting (Required initialization)
+    |
+    v
+Point Prompt (defines global vars: scale, gates, query_feature, normed_features)
+    |
+    +---> Cluster in 2D (uses: scale_conditioned_feature, normed_features)
+    |
+    +---> Segmentation in 3D (uses: gates, query_feature) <- MAIN USE CASE
+    |
+    +---> Cluster in 3D (uses: gates only, ignores query_feature)
+
+================================================================================
+## SHARED GLOBAL VARIABLES
+================================================================================
+
+1. scale
+   - User-chosen value (0, 0.5, or 1.0)
+   - Represents the object scale you want to segment
+
+2. gates = scale_gate(scale)
+   - Neural network output that conditions features based on scale
+   - Used by ALL sections to ensure consistent scale-conditioned analysis
+
+3. query_feature
+   - Extracted from: normed_features[query_index[0], query_index[1]]
+   - The feature vector of the point you clicked
+   - ONLY used by "Segmentation in 3D"
+
+4. scale_conditioned_feature
+   - 2D rendered features conditioned on scale
+   - Formula: rendered_feature * gates
+   - Used by "Cluster in 2D"
+
+5. normed_features
+   - Normalized version of scale_conditioned_feature
+   - Used for extracting query_feature and 2D clustering
+
+================================================================================
+## SECTION BREAKDOWN
+================================================================================
+
+### 1. BEGIN SEGMENTING
+Purpose: Initialize the scene, cameras, and load trained models
+
+Key Operations:
+- Load training cameras
+- Load scene_gaussians (RGB 3D Gaussians)
+- Load feature_gaussians (learned contrastive features)
+- Compute quantile transformer for scale normalization
+
+Output Variables:
+- cameras: list of camera views
+- scene_gaussians: 3D Gaussian splatting model
+- feature_gaussians: learned feature model
+- q_trans: quantile transformer function
+- upper_bound_scale: maximum scale value
+
+================================================================================
+
+### 2. POINT PROMPT
+Purpose: Define the query point and scale for segmentation
+
+Key Operations:
+- Select a camera view (ref_img_camera_id)
+- Render contrastive features to 2D
+- Choose a scale value (0-1)
+- Apply scale gate to features
+- Select query_index (pixel coordinates)
+- Extract query_feature at that point
+
+Code Flow:
+```
+rendered_feature = render_contrastive_feature(view, feature_gaussians, ...)
+    -> HxWxC feature map from specific viewpoint
+
+scale = torch.tensor([1.]).cuda()
+gates = scale_gate(scale)
+    -> Neural network output for scale conditioning
+
+scale_conditioned_feature = rendered_feature * gates
+    -> 2D features conditioned on scale
+
+normed_features = normalize(scale_conditioned_feature)
+query_feature = normed_features[query_index[0], query_index[1]]
+    -> Extract feature at clicked point
+```
+
+Output Variables:
+- scale, gates
+- scale_conditioned_feature
+- normed_features
+- query_index, query_feature
+
+================================================================================
+
+### 3. CLUSTER IN 2D
+Purpose: Visualize 2D clustering of features at the chosen scale
+
+Key Operations:
+- Downsample scale_conditioned_feature to 128x128
+- Apply HDBSCAN clustering on 2D features
+- Compute cluster centers
+- Project clusters back to full resolution
+- Visualize with random colors
+
+Uses:
+- scale_conditioned_feature (2D rendered features)
+- normed_features (for projection)
+
+Does NOT use:
+- query_feature (automatic clustering, no point prompt)
+
+Code Flow:
+```
+downsampled_features = interpolate(scale_conditioned_feature, 128x128)
+cluster_labels = HDBSCAN.fit_predict(downsampled_features)
+cluster_centers = compute_centers(cluster_labels)
+segmentation_res = einsum('nc,hwc->hwn', cluster_centers, normed_features)
+    -> Project 2D clusters to full resolution
+```
+
+Output:
+- Colored visualization of 2D feature clusters
+
+================================================================================
+
+### 4. SEGMENTATION IN 3D
+Purpose: Segment 3D Gaussians based on the query point
+
+Key Operations:
+- Apply gates to 3D point features
+- Compute similarity between query_feature and all 3D Gaussians
+- Threshold similarities to select Gaussians
+- Render segmented result
+
+Uses:
+- gates (scale conditioning)
+- query_feature (the point you clicked!)
+
+Code Flow:
+```
+point_features = feature_gaussians.get_point_features
+    -> Raw 3D features (NxC, N = number of Gaussians)
+
+scale_conditioned_point_features = point_features * gates
+    -> Apply SAME scale conditioning as 2D
+
+normed_scale_conditioned_point_features = normalize(...)
+
+similarities = einsum('C,NC->N', query_feature, normed_scale_conditioned_point_features)
+    -> Compute similarity between query and all 3D Gaussians
+
+scene_gaussians.segment(similarities > 0.75)
+    -> Select Gaussians with high similarity
+```
+
+Output:
+- Binary mask over 3D Gaussians
+- Rendered segmentation from any viewpoint
+
+================================================================================
+
+### 5. CLUSTER IN 3D
+Purpose: Automatic discovery of all objects in 3D space
+
+Key Operations:
+- Apply gates to 3D point features
+- Randomly sample Gaussians (98% sampling)
+- Apply HDBSCAN clustering on 3D features
+- Compute cluster centers
+- Assign all Gaussians to clusters
+- Visualize with random colors
+
+Uses:
+- gates (scale conditioning)
+
+Does NOT use:
+- query_feature (automatic clustering)
+
+Code Flow:
+```
+scale_conditioned_point_features = normalize(point_features) * gates
+sampled_point_features = random_sample(scale_conditioned_point_features, 0.98)
+cluster_labels = HDBSCAN.fit_predict(sampled_point_features)
+cluster_centers = compute_centers(cluster_labels)
+seg_score = einsum('nc,bc->bn', cluster_centers, normed_point_features)
+    -> Assign all points to nearest cluster
+```
+
+Output:
+- Multi-object segmentation
+- Colored visualization of 3D clusters
+
+================================================================================
+## KEY DIFFERENCE: 2D vs 3D FEATURE USAGE
+================================================================================
+
+### 2D CLUSTER uses scale_conditioned_feature:
+```
+3D point_features (from feature_gaussians)
+    -> render_contrastive_feature() renders to 2D image
+    -> rendered_feature (HxWxC image)
+    -> multiply by gates
+    -> scale_conditioned_feature (2D feature map)
+    -> cluster PIXELS in 2D image
+```
+
+### 3D SEGMENTATION uses point_features * gates:
+```
+3D point_features (from feature_gaussians)
+    -> directly multiply by gates
+    -> scale_conditioned_point_features (stays 3D, NxC)
+    -> find 3D GAUSSIANS similar to query
+```
+
+WHY THE DIFFERENCE?
+- 2D: Works with RENDERED features (HxWxC) from a specific viewpoint
+- 3D: Works with RAW 3D Gaussian features (NxC) in 3D space
+
+BOTH come from the same source:
+- feature_gaussians.get_point_features (learned via train_contrastive_feature.py)
+- scale_conditioned_feature is the 2D-rendered version of point_features
+
+================================================================================
+## VARIABLE SHARING MECHANISM
+================================================================================
+
+Sections are connected through JUPYTER'S PERSISTENT VARIABLE SCOPE, not through
+explicit parameter passing.
+
+Example:
+1. Run "Point Prompt" cell -> creates query_feature in notebook memory
+2. Run "Segmentation in 3D" cell -> reads existing query_feature from memory
+3. Change query_index and re-run "Point Prompt" -> updates query_feature
+4. Re-run "Segmentation in 3D" -> uses NEW query_feature
+
+This is standard Jupyter behavior - variables persist across cells until kernel
+is restarted.
+
+================================================================================
+## COMMON CONFUSION POINTS
+================================================================================
+
+Q: Are these sections sequential steps?
+A: NO! They are alternative tools/modes that share common initialization.
+
+Q: Why does changing query_index affect 3D segmentation?
+A: Because "Point Prompt" updates the global query_feature variable, which
+   "Segmentation in 3D" reads from notebook scope.
+
+Q: Does gates share the query information?
+A: NO! gates only encodes scale information, not the query point.
+   query_feature is what carries the point information.
+
+Q: Why run both 2D and 3D clustering?
+A: They show different views:
+   - 2D: What clusters look like in rendered images
+   - 3D: What clusters look like in 3D Gaussian space
+
+================================================================================
+## PRACTICAL USAGE
+================================================================================
+
+### To segment a specific object:
+1. Run "Begin Segmenting"
+2. Run "Point Prompt" -> set query_index to your target point
+3. Run "Segmentation in 3D"
+
+### To discover all objects automatically:
+1. Run "Begin Segmenting"
+2. Run "Point Prompt" -> set scale
+3. Run "Cluster in 3D"
+
+### To visualize 2D clustering:
+1. Run "Begin Segmenting"
+2. Run "Point Prompt" -> set scale
+3. Run "Cluster in 2D"
+
+### To segment at different scales:
+- Change scale value in "Point Prompt" (0, 0.5, or 1.0)
+- Re-run subsequent sections to see results at new scale
+
+================================================================================
+## TECHNICAL DETAILS
+================================================================================
+
+### Feature Dimensions:
+- FEATURE_DIM = 32 (fixed)
+- point_features: Nx32 (N = number of 3D Gaussians)
+- rendered_feature: 32xHxW (rendered to 2D)
+- query_feature: 32-dimensional vector
+
+### Scale Gate Network:
+- Input: 1D (scale value)
+- Hidden: 32D
+- Output: 32D (element-wise multiplier for features)
+- Activation: Sigmoid
+
+### Clustering Algorithm:
+- HDBSCAN (Hierarchical Density-Based Spatial Clustering)
+- Parameters:
+  - min_cluster_size=10
+  - cluster_selection_epsilon=0.01
+
+### Quantile Transformer:
+- Normalizes scale distributions across views
+- Output distribution: 'uniform'
+- Maps arbitrary scales to [0, 1] range
+
+================================================================================
+## FILE DEPENDENCIES
+================================================================================
+
+Required Files:
+- scene_point_cloud.ply: RGB Gaussian splatting model
+- contrastive_feature_point_cloud.ply: Learned contrastive features
+- scale_gate.pt: Trained scale gate network weights
+
+Training Prerequisites:
+1. train_scene.py: Train base 3D-GS model
+2. extract_segment_everything_masks.py: Generate SAM masks
+3. get_scale.py: Extract mask scales
+4. train_contrastive_feature.py: Learn 3D Gaussian affinity features
+
+================================================================================
+END OF SUMMARY
+================================================================================

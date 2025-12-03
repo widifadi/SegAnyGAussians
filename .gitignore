@@ -49,6 +49,12 @@ run_diagnostics.bat
 # Accidental directories
 5.8.0/
 
+# Docker build artifacts
+*.tar.gz
+*.tar
+docker/*.tar.gz
+docker/*.tar
+
 # Output directories (optional - uncomment if you want to exclude)
 # output/
 # results/
