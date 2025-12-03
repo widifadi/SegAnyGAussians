@@ -1,0 +1,709 @@
+================================================================================
+SegAnyGAussians (SAGA) - Windows Installation Guide
+================================================================================
+
+Official Repository: https://github.com/Jumpat/SegAnyGAussians
+Paper: Segment Any 3D Gaussians (AAAI 2025)
+Last Updated: 2025-12-02
+
+RECOMMENDED STACK: Python 3.10 + PyTorch 2.0.1 + CUDA 11.8 + NumPy 1.26.x
+✓ PyTorch3D prebuilt wheels (MiroPsota - installs in seconds!)
+✓ PyTorch 2.0 compatibility fixes (6 lines total)
+✓ Better Windows compatibility
+✓ Self-contained conda environment
+✓ Long-term support and maintenance
+
+IMPORTANT: PyTorch 2.0.1 requires NumPy 1.x (compiled before NumPy 2.0 existed)
+NOTE: Includes PyTorch 2.0 API compatibility fixes (torch.linalg.eig)
+
+================================================================================
+QUICK START SUMMARY
+================================================================================
+
+1. Open x64 Native Tools Command Prompt for VS 2022
+2. conda create -n SAGA python=3.10 -y && conda activate SAGA
+3. conda install -c "nvidia/label/cuda-11.8.0" cuda-toolkit -y
+4. pip install torch==2.0.1 torchvision==0.15.2 torchaudio==2.0.2 --index-url https://download.pytorch.org/whl/cu118
+5. pip install "numpy<2" "opencv-python<4.12" - CRITICAL: Pin versions!
+6. pip install plyfile tqdm hdbscan matplotlib pillow dearpygui joblib open-clip-torch numba
+7. Set environment variables (see Step 9)
+8. pip install --extra-index-url https://miropsota.github.io/torch_packages_builder pytorch3d==0.7.8+pt2.0.1cu118
+9. Modify simple-knn setup.py (see Step 11a) - CRITICAL FOR WINDOWS!
+10. Create simple-knn __init__.py (see Step 11b) - CRITICAL FOR WINDOWS!
+11. Install CUDA extensions (see Step 12)
+12. Install third-party packages (see Step 13)
+13. Download SAM checkpoint (see Step 14)
+
+================================================================================
+TABLE OF CONTENTS
+================================================================================
+1. System Requirements
+2. Prerequisites Installation
+3. Clone Repository
+4. Open x64 Native Tools Command Prompt
+5. Create Conda Environment (Python 3.10)
+6. Install CUDA Development Toolkit 11.8
+7. Install PyTorch 2.0.1 with CUDA 11.8
+8. Install Core Python Dependencies
+9. Set Environment Variables for Compilation
+10. Install PyTorch3D (Prebuilt Wheel)
+11. Windows-Specific Fix for simple-knn (CRITICAL!)
+12. Install CUDA Extensions (CRITICAL)
+13. Install Third-Party Packages
+14. Download SAM Model Checkpoint
+15. Verification Steps
+16. Troubleshooting
+17. Next Steps
+
+================================================================================
+1. SYSTEM REQUIREMENTS
+================================================================================
+
+Hardware:
+- NVIDIA GPU (Compute Capability 6.0+)
+- 8GB+ GPU memory (16GB+ recommended)
+- 16GB+ system RAM
+- 20GB+ free disk space
+
+Software:
+- Windows 10/11 64-bit
+- NVIDIA Driver 520.61+ (for CUDA 11.8)
+- Visual Studio 2019/2022 with C++ build tools
+- Conda (Anaconda or Miniconda)
+- Git for Windows
+
+================================================================================
+2. PREREQUISITES INSTALLATION
+================================================================================
+
+2.1 Visual Studio C++ Build Tools
+----------------------------------
+Download Visual Studio 2022:
+https://visualstudio.microsoft.com/downloads/
+
+Install with:
+- Desktop development with C++
+- Windows 10/11 SDK
+- CMake tools for Windows
+
+2.2 Miniconda
+-------------
+Download from: https://docs.conda.io/en/latest/miniconda.html
+Install for Windows 64-bit
+
+2.3 Git for Windows
+-------------------
+Download from: https://git-scm.com/download/win
+
+2.4 Verify GPU Driver
+---------------------
+    nvidia-smi
+Should show driver 520.61 or newer (for CUDA 11.8 support)
+
+================================================================================
+3. CLONE REPOSITORY
+================================================================================
+
+    cd D:\Work\Softwares
+    git clone https://github.com/Jumpat/SegAnyGAussians.git
+    cd SegAnyGAussians\SegAnyGAussians
+    git submodule update --init --recursive
+
+If SSH fails:
+    git config --global url."https://github.com/".insteadOf git@github.com:
+
+================================================================================
+4. OPEN X64 NATIVE TOOLS COMMAND PROMPT
+================================================================================
+
+CRITICAL: Use x64 Native Tools Command Prompt for VS 2022!
+
+1. Press Windows key
+2. Search "x64 Native Tools Command Prompt for VS 2022"
+3. Run as Administrator
+
+Verify compiler:
+    cl
+
+Verify GPU:
+    nvidia-smi
+
+================================================================================
+5. CREATE CONDA ENVIRONMENT (PYTHON 3.10)
+================================================================================
+
+Navigate to project:
+    cd D:\Work\Softwares\SegAnyGAussians\SegAnyGAussians
+
+Create environment:
+    conda create -n SAGA python=3.10 -y
+    conda activate SAGA
+
+Python 3.10 advantages:
+✓ Better Windows compatibility
+✓ PyTorch3D prebuilt wheels available (MiroPsota)
+✓ Active maintenance and long-term support
+✓ PyTorch 2.x full support
+
+================================================================================
+6. INSTALL CUDA DEVELOPMENT TOOLKIT 11.8
+================================================================================
+
+Install full CUDA toolkit (includes nvcc compiler):
+
+    conda install -c "nvidia/label/cuda-11.8.0" cuda-toolkit -y
+
+This installs:
+- CUDA 11.8 compiler (nvcc)
+- CUDA headers and libraries
+- All within conda environment (portable!)
+
+Verify:
+    nvcc --version
+Should show: release 11.8, V11.8.89
+
+================================================================================
+7. INSTALL PYTORCH 2.0.1 WITH CUDA 11.8
+================================================================================
+
+Install PyTorch via pip:
+
+    pip install torch==2.0.1 torchvision==0.15.2 torchaudio==2.0.2 --index-url https://download.pytorch.org/whl/cu118
+
+This downloads ~2.5GB. Warnings about typing-extensions are normal.
+
+Verify:
+    python -c "import torch; print('PyTorch:', torch.__version__); print('CUDA:', torch.cuda.is_available())"
+
+Expected:
+    PyTorch: 2.0.1+cu118
+    CUDA: True
+
+================================================================================
+8. PIN NUMPY AND OPENCV VERSIONS (CRITICAL!)
+================================================================================
+
+IMPORTANT: PyTorch 2.0.1 was compiled with NumPy 1.x and cannot use NumPy 2.x
+
+    pip install "numpy<2" "opencv-python<4.12"
+
+This installs:
+- NumPy 1.26.x (latest 1.x, compatible with PyTorch 2.0.1)
+- opencv-python 4.10.x (compatible with NumPy 1.x)
+
+Verify:
+    python -c "import numpy, cv2; print('NumPy:', numpy.__version__); print('OpenCV:', cv2.__version__)"
+
+Expected:
+    NumPy: 1.26.4
+    OpenCV: 4.10.0.84
+
+Why this is needed:
+- PyTorch 2.0.1 (April 2023) was released BEFORE NumPy 2.0 (June 2024)
+- PyTorch binaries were compiled against NumPy 1.x C API
+- Using NumPy 2.x causes: RuntimeError: Numpy is not available
+- opencv-python 4.12+ requires NumPy 2.x, so we pin to 4.10.x
+
+================================================================================
+8.1 INSTALL OTHER DEPENDENCIES
+================================================================================
+
+    python -m pip install --upgrade pip
+
+Due to Error dependency resolver:
+    pip install fsspec psutil>=5.8.0 pyparsing tqdm
+
+    pip install plyfile tqdm hdbscan matplotlib pillow dearpygui joblib open-clip-torch numba
+
+Packages:
+- plyfile: 3D point cloud format
+- tqdm: Progress bars
+- hdbscan: Clustering
+- matplotlib: Visualization
+- pillow: Image processing
+- dearpygui: GUI framework
+- joblib: Parallel processing
+- open-clip-torch: CLIP features
+- numba: JIT compilation
+
+================================================================================
+9. SET ENVIRONMENT VARIABLES FOR COMPILATION
+================================================================================
+
+CRITICAL: Set these BEFORE compiling CUDA extensions!
+
+Point to conda's CUDA:
+    set CUDA_PATH=%CONDA_PREFIX%
+    set CUDA_HOME=%CONDA_PREFIX%
+    set PATH=%CONDA_PREFIX%\bin;%PATH%
+
+Verify conda CUDA is first:
+    where nvcc
+First line should show: C:\Users\<YourName>\.conda\envs\SAGA\bin\nvcc.exe
+
+    nvcc --version
+Should show: release 11.8
+
+Set compilation flags:
+    set DISTUTILS_USE_SDK=1
+    set TORCH_CUDA_ARCH_LIST=6.0 6.1 7.0 7.5 8.0 8.6 8.9+PTX
+    set MAX_JOBS=2
+    set FORCE_CUDA=1
+
+GPU Architecture Guide:
+- 6.0, 6.1: GTX 10 series (Pascal)
+- 7.0: Titan V, V100
+- 7.5: GTX 16/RTX 20 series (Turing)
+- 8.0: A100
+- 8.6: RTX 30 series (Ampere)
+- 8.9: RTX 40 series (Ada Lovelace)
+
+Verify all variables:
+    echo %CUDA_PATH%
+    echo %CUDA_HOME%
+    echo %DISTUTILS_USE_SDK%
+    echo %TORCH_CUDA_ARCH_LIST%
+    echo %MAX_JOBS%
+    echo %FORCE_CUDA%
+
+IMPORTANT: These persist only in current terminal session!
+
+================================================================================
+10. INSTALL PYTORCH3D (REQUIRED - PREBUILT WHEEL)
+================================================================================
+
+PyTorch3D is REQUIRED for SegAnyGAussians (used in gaussian_model_ff.py).
+
+RECOMMENDED METHOD (Community Prebuilt Wheels - FASTEST & MOST RELIABLE):
+---------------------------------------------------------------------------
+Source: PyTorch3D GitHub Discussion #1752
+Repository: https://github.com/MiroPsota/torch_packages_builder
+
+Install using MiroPsota's prebuilt wheels:
+
+    pip install --extra-index-url https://miropsota.github.io/torch_packages_builder pytorch3d==0.7.8+pt2.0.1cu118
+
+This installs in SECONDS - NO compilation needed!
+✓ Community tested on Windows 10/11
+
+Verify:
+    python -c "import pytorch3d; print('PyTorch3D:', pytorch3d.__version__)"
+    python -c "import torch; from pytorch3d.structures import Meshes; print('✓ PyTorch3D structures working!')"
+
+Expected: PyTorch3D: 0.7.8
+
+Version Format Explained:
+- 0.7.8 = PyTorch3D version
+- pt2.0.1 = PyTorch version
+- cu118 = CUDA 11.8
+
+Alternative versions available:
+    # PyTorch 2.1.0 + CUDA 11.8
+    pip install --extra-index-url https://miropsota.github.io/torch_packages_builder pytorch3d==0.7.8+pt2.1.0cu118
+
+    # PyTorch 2.0.1 + CUDA 12.1
+    pip install --extra-index-url https://miropsota.github.io/torch_packages_builder pytorch3d==0.7.8+pt2.0.1cu121
+
+View all available versions: https://miropsota.github.io/torch_packages_builder
+
+
+FALLBACK OPTIONS (if prebuilt wheels fail):
+--------------------------------------------
+
+Option 1 - Official PyPI (may work):
+    pip install pytorch3d
+
+Option 2 - Conda-forge:
+    conda install -c conda-forge pytorch3d -y
+
+Option 3 - Build from source (LAST RESORT - takes 30+ minutes):
+    pip install fvcore iopath
+    pip install "git+https://github.com/facebookresearch/pytorch3d.git@v0.7.8"
+
+================================================================================
+11. WINDOWS-SPECIFIC FIX FOR SIMPLE-KNN (CRITICAL!)
+================================================================================
+
+IMPORTANT: Before installing CUDA extensions, you must fix simple-knn for Windows.
+This solves the "DLL load failed" and "ModuleNotFoundError: No module named 'simple_knn._C'" errors.
+
+STEP 11a: MODIFY SETUP.PY (REQUIRED)
+--------------------------------------
+
+Location: submodules\simple-knn\setup.py
+
+Replace the entire content with:
+
+---START OF FILE---
+from setuptools import setup
+from torch.utils.cpp_extension import CUDAExtension, BuildExtension
+import os
+import sys
+
+cxx_compiler_flags = []
+nvcc_compiler_flags = []
+
+if os.name == 'nt':
+    cxx_compiler_flags.append("/wd4624")
+
+if sys.platform == "win32":
+    nvcc_compiler_flags += [
+        "-DWIN32_LEAN_AND_MEAN",
+        "-allow-unsupported-compiler",
+    ]
+
+setup(
+    name="simple_knn",
+    packages=['simple_knn'],
+    ext_modules=[
+        CUDAExtension(
+            name="simple_knn._C",
+            sources=[
+                "spatial.cu",
+                "simple_knn.cu",
+                "ext.cpp"
+            ],
+            extra_compile_args={"nvcc": nvcc_compiler_flags, "cxx": cxx_compiler_flags})
+    ],
+    cmdclass={
+        'build_ext': BuildExtension.with_options(use_ninja=True)
+    }
+)
+---END OF FILE---
+
+Key change:
+- Added packages=['simple_knn'] parameter (tells setuptools to include __init__.py)
+
+Use any text editor:
+    notepad submodules\simple-knn\setup.py
+
+Or VS Code:
+    code submodules\simple-knn\setup.py
+
+
+STEP 11b: CREATE __INIT__.PY (REQUIRED)
+-----------------------------------------
+
+Location: submodules\simple-knn\simple_knn\__init__.py
+
+Create this file with the following content:
+
+---START OF FILE---
+import os
+import sys
+
+# Add torch DLL directory to search path (Windows only)
+try:
+    import torch
+    torch_lib_dir = os.path.join(os.path.dirname(torch.__file__), 'lib')
+    if sys.platform == 'win32' and os.path.exists(torch_lib_dir):
+        os.add_dll_directory(torch_lib_dir)
+except Exception:
+    pass
+
+from simple_knn._C import *
+---END OF FILE---
+
+Reason: On Windows, Python needs the torch\lib directory in its DLL search
+path to find c10.dll, torch_cpu.dll, and other PyTorch dependencies required
+by the simple-knn CUDA extension.
+
+Use any text editor to create this file:
+    notepad submodules\simple-knn\simple_knn\__init__.py
+
+Or use VS Code:
+    code submodules\simple-knn\simple_knn\__init__.py
+
+Copy and paste the content above, then save the file.
+
+================================================================================
+12. INSTALL CUDA EXTENSIONS (CRITICAL)
+================================================================================
+
+Verify environment variables from Step 9 are still set:
+    echo %CUDA_PATH%
+    echo %CUDA_HOME%
+
+If blank, go back to Step 9!
+
+Install diff-gaussian-rasterization:
+    cd submodules\diff-gaussian-rasterization
+    pip install --no-build-isolation .
+    cd ..\..
+
+Install diff-gaussian-rasterization-depth:
+    cd submodules\diff-gaussian-rasterization-depth
+    pip install --no-build-isolation .
+    cd ..\..
+
+Install diff-gaussian-rasterization_contrastive_f:
+    cd submodules\diff-gaussian-rasterization_contrastive_f
+    pip install --no-build-isolation .
+    cd ..\..
+
+Install simple-knn:
+    cd submodules\simple-knn
+    pip install --no-build-isolation .
+    cd ..\..
+
+Each takes 5-15 minutes to compile.
+
+Verify:
+    python -c "import diff_gaussian_rasterization; print('diff-gaussian-rasterization: OK')"
+    python -c "import diff_gaussian_rasterization_depth; print('diff-gaussian-rasterization-depth: OK')"
+    python -c "import diff_gaussian_rasterization_contrastive_f; print('diff-gaussian-rasterization_contrastive_f: OK')"
+    python -c "from simple_knn._C import distCUDA2; print('simple-knn: OK')"
+
+Troubleshooting:
+- "DLL load failed": CUDA mismatch. Check: where nvcc (conda path must be FIRST)
+- "MSVC required": Not in x64 Native Tools Command Prompt
+- "Out of memory": set MAX_JOBS=1
+
+================================================================================
+13. INSTALL THIRD-PARTY PACKAGES
+================================================================================
+
+Install Segment Anything:
+    cd third_party\segment-anything
+    pip install -e .
+    cd ..\..
+
+Install kmeans_pytorch:
+    cd third_party\kmeans_pytorch
+    pip install -e .
+    cd ..\..
+
+Verify:
+    python -c "from segment_anything import sam_model_registry; print('SAM: OK')"
+    python -c "import kmeans_pytorch; print('kmeans_pytorch: OK')"
+
+================================================================================
+14. DOWNLOAD SAM MODEL CHECKPOINT
+================================================================================
+
+Create directory:
+    mkdir third_party\segment-anything\sam_ckpt
+
+Download (2.4GB):
+    powershell -Command "Invoke-WebRequest -Uri 'https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth' -OutFile 'third_party\segment-anything\sam_ckpt\sam_vit_h_4b8939.pth'"
+
+Or download manually:
+https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth
+Save to: third_party\segment-anything\sam_ckpt\sam_vit_h_4b8939.pth
+
+Verify:
+    dir third_party\segment-anything\sam_ckpt\sam_vit_h_4b8939.pth
+Should be ~2.4GB
+
+================================================================================
+15. VERIFICATION STEPS
+================================================================================
+
+Verify PyTorch and CUDA:
+    python -c "import torch; print('PyTorch:', torch.__version__); print('CUDA:', torch.cuda.is_available()); print('GPU:', torch.cuda.get_device_name(0))"
+
+Expected:
+    PyTorch: 2.0.1+cu118
+    CUDA: True
+    GPU: [Your GPU name]
+
+Verify all extensions:
+    python -c "import diff_gaussian_rasterization; print('✓ rasterization')"
+    python -c "import diff_gaussian_rasterization_depth; print('✓ depth')"
+    python -c "import diff_gaussian_rasterization_contrastive_f; print('✓ contrastive')"
+    python -c "from simple_knn._C import distCUDA2; print('✓ simple-knn')"
+    python -c "import pytorch3d; print('✓ PyTorch3D')"
+    python -c "from segment_anything import sam_model_registry; print('✓ SAM')"
+
+Test SegAnyGAussians:
+    python train_scene.py --help
+
+If help message shows, installation complete!
+
+================================================================================
+16. TROUBLESHOOTING
+================================================================================
+
+16.1 "DLL load failed" for simple-knn
+--------------------------------------
+Most common cause: Missing __init__.py file with Windows DLL fix!
+
+Solution 1 - Create __init__.py (MOST COMMON FIX):
+    Go back to Step 11 and create the __init__.py file
+    Location: submodules\simple-knn\simple_knn\__init__.py
+
+Solution 2 - CUDA version mismatch:
+    where nvcc
+Conda path MUST be first! If not:
+    set CUDA_PATH=%CONDA_PREFIX%
+    set CUDA_HOME=%CONDA_PREFIX%
+    set PATH=%CONDA_PREFIX%\bin;%PATH%
+
+Solution 3 - Reinstall simple-knn:
+    cd submodules\simple-knn
+    pip uninstall simple-knn -y
+    pip install .
+    cd ..\..
+
+16.2 "MSVC 14.0 required"
+--------------------------
+Not in x64 Native Tools Command Prompt!
+Go back to Step 4.
+
+16.3 PyTorch3D fails
+--------------------
+If the recommended MiroPsota prebuilt wheels fail, try these in order:
+
+1. Official PyPI:
+    pip install pytorch3d
+
+2. Conda-forge:
+    conda install -c conda-forge pytorch3d -y
+
+3. Build from source (requires 30+ minutes):
+    pip install fvcore iopath
+    pip install "git+https://github.com/facebookresearch/pytorch3d.git@v0.7.8"
+
+4. Check PyTorch3D Discussion #1752 for latest solutions:
+    https://github.com/facebookresearch/pytorch3d/discussions/1752
+
+16.4 nvcc shows wrong version
+------------------------------
+System CUDA is being used instead of conda CUDA.
+Solution:
+    set PATH=%CONDA_PREFIX%\bin;%PATH%
+    where nvcc
+First path should be conda environment.
+
+16.5 Git submodule fails
+------------------------
+    git config --global url."https://github.com/".insteadOf git@github.com:
+    git submodule update --init --recursive --force
+
+16.6 Out of memory during compilation
+--------------------------------------
+    set MAX_JOBS=1
+
+16.7 CUDA out of memory during training
+----------------------------------------
+Use --downsample flag:
+    python extract_segment_everything_masks.py --downsample 2
+
+================================================================================
+17. NEXT STEPS
+================================================================================
+
+Train model:
+    python train_scene.py -s <path_to_scene> -m <output_path>
+
+Extract SAM masks:
+    python extract_segment_everything_masks.py --image_root <scene_path> --sam_checkpoint_path third_party\segment-anything\sam_ckpt\sam_vit_h_4b8939.pth
+
+Compute mask scales:
+    python get_scale.py --image_root <scene_path> --model_path <model_path>
+
+Train contrastive features:
+    python train_contrastive_feature.py -m <model_path> --iterations 10000
+
+Interactive segmentation:
+    python saga_gui.py --model_path <model_path>
+
+================================================================================
+ENVIRONMENT DETAILS
+================================================================================
+
+Recommended Stack:
+- Python: 3.10
+- CUDA Toolkit: 11.8 (conda)
+- PyTorch: 2.0.1+cu118
+- PyTorch3D: 0.7.8 (prebuilt wheel)
+- NumPy: 1.26.x (pinned to <2)
+- opencv-python: 4.10.x (pinned to <4.12)
+
+Advantages:
+✓ Self-contained (all in conda environment)
+✓ Portable (export to other machines)
+✓ No PyTorch3D compilation needed
+✓ Better Windows compatibility
+✓ Reliable CUDA extension compilation
+✓ Long-term support
+✓ Stable NumPy 1.x (compatible with PyTorch 2.0.1)
+
+Note: Includes PyTorch 2.0 API compatibility fixes (6 lines total)
+
+Export environment:
+    conda env export > environment.yml
+
+Remove environment:
+    conda deactivate
+    conda env remove -n SAGA
+
+================================================================================
+CITATION
+================================================================================
+
+@article{cen2023saga,
+    title={Segment Any 3D Gaussians},
+    author={Jiazhong Cen and Jiemin Fang and Chen Yang and Lingxi Xie and
+            Xiaopeng Zhang and Wei Shen and Qi Tian},
+    year={2023},
+    journal={arXiv preprint arXiv:2312.00860},
+}
+
+================================================================================
+ADDITIONAL RESOURCES
+================================================================================
+
+PyTorch3D Official Wheels:
+- Facebook PyTorch3D Wheels: https://dl.fbaipublicfiles.com/pytorch3d/packaging/wheels/
+- PyTorch3D Install Guide: https://github.com/facebookresearch/pytorch3d/blob/main/INSTALL.md
+
+PyTorch Downloads:
+- PyTorch Previous Versions: https://pytorch.org/get-started/previous-versions/
+
+Official Documentation:
+- SegAnyGAussians: https://github.com/Jumpat/SegAnyGAussians
+- Segment Anything: https://github.com/facebookresearch/segment-anything
+- COLMAP: https://colmap.github.io/
+
+================================================================================
+Repository: https://github.com/Jumpat/SegAnyGAussians
+Last Updated: 2025-12-03
+Guide Version: 4.1 (Python 3.10 + PyTorch 2.0.1 + NumPy 1.26.x - WORKING)
+================================================================================
+
+CHANGELOG:
+v4.1 (2025-12-03):
+- FINAL WORKING STACK: Python 3.10 + PyTorch 2.0.1 + CUDA 11.8 + NumPy 1.26.x
+- CRITICAL FIX: Pin NumPy<2 and opencv-python<4.12
+- PyTorch 2.0.1 was compiled with NumPy 1.x, incompatible with NumPy 2.x
+- Added Step 8: Pin NumPy and OpenCV versions (critical!)
+- Updated simple-knn setup.py fix (packages=['simple_knn'])
+- Includes PyTorch 2.0 API compatibility fixes (6 lines):
+  * torch.eig → torch.linalg.eig (saga_gui.py)
+  * Added explicit dtype to torch.tensor calls (cameras.py, network_gui.py)
+- ✅ TESTED AND WORKING on Windows 11 with RTX 4060 Ti
+- MiroPsota prebuilt wheels for PyTorch3D (installs in seconds!)
+- All 17 steps with proper environment setup
+
+v4.0 (2025-12-02):
+- Initial Python 3.10 stack attempt
+- Discovered NumPy 2.x incompatibility with PyTorch 2.0.1
+- Code fixes valid but needed NumPy 1.x
+
+v3.0 (2025-12-02):
+- Attempted Python 3.8 + PyTorch 1.13.0 stack
+- Discovered: No Windows wheels for PyTorch3D with this combination
+- Only Linux wheels available for py38_cu116_pyt1130
+- Reverted to v4.0 stack after analysis
+
+v2.2 (2025-12-02):
+- Added Windows-Specific Fix for simple-knn (CRITICAL!)
+- Added __init__.py creation for simple-knn to fix DLL load errors
+- Solution verified from 3dgs-mcmc Windows installation experience
+
+v2.1 (2025-12-02):
+- Added MiroPsota prebuilt wheels (Python 3.10 + PyTorch 2.0.1)
+- Community-tested solution (Discussion #1752)
+
+================================================================================

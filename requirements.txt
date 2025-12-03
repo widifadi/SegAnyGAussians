@@ -1,0 +1,104 @@
+# SegAnyGAussians (SAGA) - Python Package Requirements
+# Python 3.10 + PyTorch 2.0.1 + CUDA 11.8 + NumPy 1.26.x
+# Last Updated: 2025-12-03
+# Status: TESTED AND WORKING on Windows 11
+
+# ============================================================================
+# PyTorch Ecosystem (CUDA 11.8)
+# ============================================================================
+# Install with: pip install -r requirements.txt
+# Note: Use --extra-index-url for PyTorch packages
+
+torch==2.0.1+cu118
+torchvision==0.15.2+cu118
+torchaudio==2.0.2+cu118
+# Install command:
+# pip install torch==2.0.1+cu118 torchvision==0.15.2+cu118 torchaudio==2.0.2+cu118 --extra-index-url https://download.pytorch.org/whl/cu118
+
+# ============================================================================
+# CRITICAL: NumPy and OpenCV Version Constraints
+# ============================================================================
+# PyTorch 2.0.1 was compiled with NumPy 1.x and CANNOT use NumPy 2.x
+# This causes: RuntimeError: Numpy is not available
+
+numpy<2                # Pin to NumPy 1.26.x (latest 1.x)
+opencv-python<4.12     # opencv-python 4.12+ requires NumPy 2.x
+
+# ============================================================================
+# PyTorch3D (Prebuilt Wheels)
+# ============================================================================
+# Install with MiroPsota's prebuilt wheels (saves 30-60 min compilation)
+# Install command:
+# pip install --extra-index-url https://miropsota.github.io/torch_packages_builder pytorch3d==0.7.8+pt2.0.1cu118
+
+pytorch3d==0.7.8+pt2.0.1cu118
+fvcore>=0.1.5
+iopath>=0.1.10
+
+# ============================================================================
+# Core Dependencies
+# ============================================================================
+
+# 3D and visualization
+plyfile>=1.0
+matplotlib>=3.7
+
+# GUI and image processing
+pillow>=10.0
+dearpygui>=2.0
+
+# ML and processing
+tqdm>=4.65
+hdbscan>=0.8
+numba>=0.58
+
+# Feature extraction
+joblib==1.1.0
+open-clip-torch==2.0.2
+
+# Dependency resolver fixes
+fsspec>=2024.0
+psutil>=5.8.0
+pyparsing>=3.0
+
+# ============================================================================
+# CUDA Extensions (Must be compiled separately)
+# ============================================================================
+# These are NOT in requirements.txt - must be compiled from source:
+# - diff-gaussian-rasterization
+# - diff-gaussian-rasterization-depth
+# - diff-gaussian-rasterization_contrastive_f
+# - simple-knn
+#
+# See WINDOWS_INSTALLATION.txt Step 11-12 for compilation instructions
+
+# ============================================================================
+# Third-Party Packages (Must be installed separately)
+# ============================================================================
+# These are NOT in requirements.txt - install from third_party directory:
+# - segment-anything (SAM)
+# - kmeans_pytorch
+#
+# See WINDOWS_INSTALLATION.txt Step 13 for installation instructions
+
+# ============================================================================
+# Installation Instructions
+# ============================================================================
+#
+# RECOMMENDED: Use environment.yml for full setup
+#   conda env create -f environment.yml
+#
+# ALTERNATIVE: Manual pip installation
+#   1. Create Python 3.10 environment
+#   2. Install CUDA toolkit 11.8 (via conda or system)
+#   3. Install PyTorch with CUDA 11.8:
+#      pip install torch==2.0.1+cu118 torchvision==0.15.2+cu118 torchaudio==2.0.2+cu118 --extra-index-url https://download.pytorch.org/whl/cu118
+#   4. Install version constraints:
+#      pip install "numpy<2" "opencv-python<4.12"
+#   5. Install PyTorch3D:
+#      pip install --extra-index-url https://miropsota.github.io/torch_packages_builder pytorch3d==0.7.8+pt2.0.1cu118
+#   6. Install remaining packages:
+#      pip install -r requirements.txt
+#   7. Follow WINDOWS_INSTALLATION.txt Steps 9-14
+#
+# ============================================================================
