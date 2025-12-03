@@ -36,13 +36,22 @@ For **Windows users**, follow the streamlined guide:
 
 ## Linux Installation
 
-The installation is similar to [3D Gaussian Splatting](https://github.com/graphdeco-inria/gaussian-splatting):
+The installation is similar to [3D Gaussian Splatting](https://github.com/graphdeco-inria/gaussian-splatting).
 
+**For this Windows-compatible fork** (Python 3.10 + PyTorch 2.0.1):
+```bash
+git clone -b v2_cu118 https://github.com/widifadi/SegAnyGAussians.git
+cd SegAnyGAussians
+conda env create --file environment.yml
+conda activate SAGA
+```
+
+**For the original version** (Python 3.7 + PyTorch 1.12.1):
 ```bash
 git clone https://github.com/Jumpat/SegAnyGAussians.git
 cd SegAnyGAussians
 conda env create --file environment.yml
-conda activate SAGA
+conda activate gaussian_splatting
 ```
 
 Download the SAM model checkpoint from [here](https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth) and place it under `./third_party/segment-anything/sam_ckpt`.
