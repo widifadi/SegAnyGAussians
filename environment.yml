@@ -1,26 +1,66 @@
-name: gaussian_splatting
+# SegAnyGAussians (SAGA) - Windows Environment Configuration
+# Python 3.10 + PyTorch 2.0.1 + CUDA 11.8 + NumPy 1.26.x
+# Last Updated: 2025-12-03
+# Status: TESTED AND WORKING on Windows 11
+
+name: SAGA
 channels:
   - pytorch
+  - nvidia/label/cuda-11.8.0
   - conda-forge
   - defaults
+
 dependencies:
-  - cudatoolkit=11.6
-  - plyfile=0.8.1
-  - python=3.7.13
-  - pip=22.3.1
-  - pytorch=1.12.1
-  - torchaudio=0.12.1
-  - torchvision=0.13.1
+  - python=3.10
+  - cuda-toolkit=11.8
+  - pip
+
+  # Conda packages
+  - plyfile
   - tqdm
   - hdbscan
   - matplotlib
+
+  # Pip packages (installed via pip in environment)
   - pip:
-    - submodules/diff-gaussian-rasterization
-    - submodules/diff-gaussian-rasterization_contrastive_f
-    - submodules/diff-gaussian-rasterization-depth
-    - submodules/simple-knn
-    - third_party/segment-anything
-    - dearpygui
-    - opencv-python
-    - open-clip-torch
-    - joblib==1.1.0
+      # PyTorch ecosystem (CUDA 11.8)
+      - torch==2.0.1
+      - torchvision==0.15.2
+      - torchaudio==2.0.2
+      - --extra-index-url https://download.pytorch.org/whl/cu118
+
+      # CRITICAL: Pin NumPy and OpenCV to versions compatible with PyTorch 2.0.1
+      - numpy<2              # PyTorch 2.0.1 requires NumPy 1.x
+      - opencv-python<4.12   # opencv-python 4.12+ requires NumPy 2.x
+
+      # PyTorch3D (prebuilt wheels from MiroPsota)
+      - pytorch3d==0.7.8+pt2.0.1cu118
+      - --extra-index-url https://miropsota.github.io/torch_packages_builder
+      - fvcore
+      - iopath
+
+      # Core dependencies
+      - pillow
+      - dearpygui
+      - joblib==1.1.0
+      - open-clip-torch==2.0.2
+      - numba
+
+      # Dependency resolver fix
+      - fsspec
+      - psutil>=5.8.0
+      - pyparsing
+
+# Installation Notes:
+# 1. This environment.yml does NOT include CUDA extensions (must be compiled)
+# 2. After creating environment, you must:
+#    - Modify simple-knn/setup.py (add packages=['simple_knn'])
+#    - Create simple-knn/simple_knn/__init__.py (Windows DLL fix)
+#    - Compile CUDA extensions (diff-gaussian-rasterization, simple-knn, etc.)
+#    - Install third-party packages (segment-anything, kmeans_pytorch)
+# 3. See WINDOWS_INSTALLATION.txt for complete instructions
+
+# Usage:
+#   conda env create -f environment.yml
+#   conda activate SAGA
+#   # Then follow WINDOWS_INSTALLATION.txt Steps 9-14
