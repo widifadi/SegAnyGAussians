@@ -12,7 +12,7 @@ The official implementation of [SAGA (Segment Any 3D GAussians)](https://arxiv.o
 
 ## 🪟 Windows-Compatible Fork
 
-> **This fork adds Windows compatibility and modern PyTorch/NumPy support.**
+> **This fork ([widifadi/SegAnyGAussians](https://github.com/widifadi/SegAnyGAussians)) adds Windows compatibility and modern PyTorch/NumPy support.**
 >
 > - ✅ Python 3.10 + PyTorch 2.0.1 + CUDA 11.8
 > - ✅ Windows 10/11 tested and working
