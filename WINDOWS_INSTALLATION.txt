@@ -16,6 +16,20 @@ RECOMMENDED STACK: Python 3.10 + PyTorch 2.0.1 + CUDA 11.8 + NumPy 1.26.x
 IMPORTANT: PyTorch 2.0.1 requires NumPy 1.x (compiled before NumPy 2.0 existed)
 NOTE: Includes PyTorch 2.0 API compatibility fixes (torch.linalg.eig)
 
+--------------------------------------------------------------------------------
+NVIDIA RTX 50 SERIES (Blackwell / sm_120) USERS - READ THIS FIRST!
+--------------------------------------------------------------------------------
+The default stack above does NOT support RTX 50 series GPUs.
+- CUDA 11.8 has no Blackwell support
+- PyTorch 2.0.1 through 2.6.x only support up to sm_90 (Ada Lovelace)
+- RTX 5080 / 5090 are compute capability 12.0 (sm_120)
+
+Use this alternative stack instead:
+  Python 3.10 + PyTorch 2.8.0+cu128 + System CUDA 12.8
+
+See APPENDIX A at the end of this guide for the full Blackwell installation.
+--------------------------------------------------------------------------------
+
 ================================================================================
 QUICK START SUMMARY
 ================================================================================
@@ -213,7 +227,7 @@ Why this is needed:
 Due to Error dependency resolver:
     pip install fsspec psutil>=5.8.0 pyparsing tqdm
 
-    pip install plyfile tqdm hdbscan matplotlib pillow dearpygui joblib open-clip-torch numba
+    pip install plyfile tqdm hdbscan matplotlib pillow dearpygui PyQt5 joblib open-clip-torch numba
 
 Packages:
 - plyfile: 3D point cloud format
@@ -221,7 +235,8 @@ Packages:
 - hdbscan: Clustering
 - matplotlib: Visualization
 - pillow: Image processing
-- dearpygui: GUI framework
+- dearpygui: GUI framework (saga_gui.py)
+- PyQt5: GUI framework (segmentation_gui.py — lightweight segmentation interface)
 - joblib: Parallel processing
 - open-clip-torch: CLIP features
 - numba: JIT compilation
@@ -605,8 +620,12 @@ Compute mask scales:
 Train contrastive features:
     python train_contrastive_feature.py -m <model_path> --iterations 10000
 
-Interactive segmentation:
+Interactive segmentation (original full-featured GUI):
     python saga_gui.py --model_path <model_path>
+
+Lightweight segmentation GUI (recommended for large scenes / low VRAM):
+    python segmentation_gui.py
+    # Then fill in Model Path and Data/Source Path in the GUI
 
 ================================================================================
 ENVIRONMENT DETAILS
@@ -637,6 +656,258 @@ Export environment:
 Remove environment:
     conda deactivate
     conda env remove -n SAGA
+
+================================================================================
+APPENDIX A: RTX 50 SERIES (BLACKWELL / sm_120) INSTALLATION
+================================================================================
+
+Tested on: RTX 5080, Windows 11, MSVC 14.44, System CUDA 12.8
+Working stack: Python 3.10 + PyTorch 2.8.0+cu128 + System CUDA 12.8
+
+--------------------------------------------------------------------------------
+A.1 WHY A DIFFERENT STACK IS NEEDED
+--------------------------------------------------------------------------------
+
+RTX 50 series (Blackwell) GPUs have compute capability 12.0 (sm_120).
+
+- CUDA 11.8: does not support Blackwell at all
+- PyTorch 2.6.x and below: sm_90 (Ada Lovelace) is the highest supported arch
+  Running SAGA on these versions gives:
+    RuntimeError: CUDA error: no kernel image is available for execution on the device
+- PyTorch 2.9.1+cu128 on Windows: compiled_autograd.h causes C2872 MSVC error
+  when building CUDA extensions (known incompatibility with MSVC 14.44)
+- PyTorch 2.8.0+cu128: supports sm_120 AND compiles cleanly on Windows MSVC
+
+--------------------------------------------------------------------------------
+A.2 PREREQUISITES (same as main guide Steps 1-5)
+--------------------------------------------------------------------------------
+
+- Visual Studio 2022 with C++ build tools (x64 Native Tools Command Prompt)
+- Miniconda, Git for Windows
+- System CUDA 12.8 installed from NVIDIA (https://developer.nvidia.com/cuda-downloads)
+  Verify: nvcc --version  (should show release 12.8)
+- DO NOT install conda CUDA toolkit (skip Step 6 of the main guide)
+
+Verify your GPU is Blackwell:
+    nvidia-smi
+Should show RTX 5070 / 5080 / 5090 etc.
+
+--------------------------------------------------------------------------------
+A.3 CREATE CONDA ENVIRONMENT
+--------------------------------------------------------------------------------
+
+    conda create -n SAGA python=3.10 -y
+    conda activate SAGA
+
+--------------------------------------------------------------------------------
+A.4 INSTALL PYTORCH 2.8.0+cu128
+--------------------------------------------------------------------------------
+
+    pip install torch==2.8.0 torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
+
+Verify (must show sm_120 support — no "no kernel image" error):
+    python -c "import torch; print(torch.__version__); print(torch.cuda.is_available()); print(torch.cuda.get_device_name(0))"
+
+Expected:
+    2.8.0+cu128
+    True
+    NVIDIA GeForce RTX 5080
+
+--------------------------------------------------------------------------------
+A.5 INSTALL CORE PYTHON DEPENDENCIES
+--------------------------------------------------------------------------------
+
+    pip install "numpy<2" "opencv-python<4.12"
+    pip install plyfile tqdm hdbscan matplotlib pillow dearpygui PyQt5 joblib open-clip-torch numba
+    pip install fsspec psutil pyparsing
+
+--------------------------------------------------------------------------------
+A.6 SET ENVIRONMENT VARIABLES FOR COMPILATION
+--------------------------------------------------------------------------------
+
+CRITICAL: Set these BEFORE compiling CUDA extensions!
+
+    set DISTUTILS_USE_SDK=1
+    set TORCH_CUDA_ARCH_LIST=8.6 8.9 12.0+PTX
+    set MAX_JOBS=2
+    set FORCE_CUDA=1
+
+Note: Do NOT set CUDA_PATH / CUDA_HOME to conda prefix (there is no conda CUDA).
+The system CUDA 12.8 at C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.8
+is picked up automatically by PyTorch's BuildExtension.
+
+Verify nvcc is found:
+    nvcc --version
+Should show: release 12.8
+
+--------------------------------------------------------------------------------
+A.7 PATCH THE THREE RASTERIZATION SETUP.PY FILES (REQUIRED FOR WINDOWS)
+--------------------------------------------------------------------------------
+
+Each of the three rasterization submodules needs Windows-specific nvcc flags.
+Add `import sys` and the Windows block to their setup.py files.
+
+The patched setup.py content (same pattern for all three — only `name` differs):
+
+---START OF FILE---
+from setuptools import setup
+from torch.utils.cpp_extension import CUDAExtension, BuildExtension
+import os
+import sys
+os.path.dirname(os.path.abspath(__file__))
+
+nvcc_flags = ["-I" + os.path.join(os.path.dirname(os.path.abspath(__file__)), "third_party/glm/")]
+if sys.platform == "win32":
+    nvcc_flags += ["-DWIN32_LEAN_AND_MEAN", "-allow-unsupported-compiler"]
+
+setup(
+    name="diff_gaussian_rasterization",          # change per submodule
+    packages=['diff_gaussian_rasterization'],     # change per submodule
+    ext_modules=[
+        CUDAExtension(
+            name="diff_gaussian_rasterization._C", # change per submodule
+            sources=[
+            "cuda_rasterizer/rasterizer_impl.cu",
+            "cuda_rasterizer/forward.cu",
+            "cuda_rasterizer/backward.cu",
+            "rasterize_points.cu",
+            "ext.cpp"],
+            extra_compile_args={"nvcc": nvcc_flags})
+        ],
+    cmdclass={
+        'build_ext': BuildExtension
+    }
+)
+---END OF FILE---
+
+Apply to all three submodules:
+  submodules\diff-gaussian-rasterization\setup.py
+    name="diff_gaussian_rasterization", packages=['diff_gaussian_rasterization']
+  submodules\diff-gaussian-rasterization-depth\setup.py
+    name="diff_gaussian_rasterization_depth", packages=['diff_gaussian_rasterization_depth']
+  submodules\diff-gaussian-rasterization_contrastive_f\setup.py
+    name="diff_gaussian_rasterization_contrastive_f", packages=['diff_gaussian_rasterization_contrastive_f']
+
+Note: submodules\simple-knn\setup.py already has Windows flags — no change needed.
+
+--------------------------------------------------------------------------------
+A.8 INSTALL PYTORCH3D (PREBUILT WHEEL)
+--------------------------------------------------------------------------------
+
+MiroPsota provides a matching wheel for PyTorch 2.8.0+cu128 Python 3.10 Windows:
+
+    pip install "https://github.com/MiroPsota/torch_packages_builder/releases/download/pytorch3d-0.7.9/pytorch3d-0.7.9%2Bpt2.8.0cu128-cp310-cp310-win_amd64.whl"
+
+Verify:
+    python -c "import pytorch3d; print('PyTorch3D:', pytorch3d.__version__)"
+
+Expected: PyTorch3D: 0.7.9
+
+--------------------------------------------------------------------------------
+A.9 INSTALL CUDA EXTENSIONS
+--------------------------------------------------------------------------------
+
+Clean any existing build dirs first, then install each extension:
+
+    cd submodules\diff-gaussian-rasterization
+    rmdir /s /q build 2>nul
+    pip install --no-build-isolation .
+    cd ..\..
+
+    cd submodules\diff-gaussian-rasterization-depth
+    rmdir /s /q build 2>nul
+    pip install --no-build-isolation .
+    cd ..\..
+
+    cd submodules\diff-gaussian-rasterization_contrastive_f
+    rmdir /s /q build 2>nul
+    pip install --no-build-isolation .
+    cd ..\..
+
+    cd submodules\simple-knn
+    rmdir /s /q build 2>nul
+    pip install --no-build-isolation .
+    cd ..\..
+
+Each takes 5-15 minutes to compile.
+
+--------------------------------------------------------------------------------
+A.10 INSTALL THIRD-PARTY PACKAGES
+--------------------------------------------------------------------------------
+
+    cd third_party\segment-anything
+    pip install -e .
+    cd ..\..
+
+    cd third_party\kmeans_pytorch
+    pip install -e .
+    cd ..\..
+
+--------------------------------------------------------------------------------
+A.11 DOWNLOAD SAM CHECKPOINT
+--------------------------------------------------------------------------------
+
+    mkdir third_party\segment-anything\sam_ckpt
+    powershell -Command "Invoke-WebRequest -Uri 'https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth' -OutFile 'third_party\segment-anything\sam_ckpt\sam_vit_h_4b8939.pth'"
+
+File size should be ~2.4GB.
+
+--------------------------------------------------------------------------------
+A.12 VERIFICATION
+--------------------------------------------------------------------------------
+
+    python -c "import torch; import pytorch3d; import diff_gaussian_rasterization; import diff_gaussian_rasterization_depth; import diff_gaussian_rasterization_contrastive_f; import simple_knn; print('torch:', torch.__version__); print('pytorch3d:', pytorch3d.__version__); print('CUDA:', torch.cuda.is_available()); print('GPU:', torch.cuda.get_device_name(0)); print('All OK')"
+
+Expected output:
+    torch: 2.8.0+cu128
+    pytorch3d: 0.7.9
+    CUDA: True
+    GPU: NVIDIA GeForce RTX 5080
+    All OK
+
+Run the original GUI:
+    python saga_gui.py -m <path_to_model_output_dir>
+
+Run the lightweight segmentation GUI (recommended — lower VRAM, multi-object, PLY export):
+    python segmentation_gui.py
+
+--------------------------------------------------------------------------------
+A.13 KNOWN ISSUES AND NOTES
+--------------------------------------------------------------------------------
+
+1. PyTorch 2.9.1+cu128 C2872 MSVC error:
+   PyTorch 2.9.1's compiled_autograd.h(1134) uses ::std::is_same_v inside a
+   template instantiation that MSVC 14.44 cannot resolve during CUDA cudafe
+   host compilation. The -DWIN32_LEAN_AND_MEAN flag does NOT fix this.
+   Solution: Use PyTorch 2.8.0+cu128 instead.
+
+2. PyTorch 2.6.0+cu126 sm_120 error:
+   "no kernel image is available for execution on the device" at runtime.
+   PyTorch 2.6.x supports only up to sm_90. Upgrade to 2.8.0+cu128.
+
+3. TORCH_CUDA_ARCH_LIST must include 12.0+PTX:
+   The +PTX suffix enables PTX JIT fallback for forward compatibility.
+   Without it, CUDA extensions built for sm_120 may not JIT-compile on
+   future Blackwell sub-variants.
+
+4. Do not use conda CUDA with this stack:
+   Mixing conda CUDA 11.8 with system CUDA 12.8 and PyTorch 2.8.0+cu128
+   causes version mismatches. Let PyTorch use the system CUDA directly.
+
+--------------------------------------------------------------------------------
+A.14 BLACKWELL STACK SUMMARY
+--------------------------------------------------------------------------------
+
+  Component        Version
+  ---------------  --------------------------
+  Python           3.10
+  CUDA (system)    12.8
+  PyTorch          2.8.0+cu128
+  torchvision      latest compatible cu128
+  PyTorch3D        0.7.9+pt2.8.0cu128
+  NumPy            <2 (1.26.x)
+  opencv-python    <4.12 (4.10.x)
+  ARCH_LIST        8.6 8.9 12.0+PTX
 
 ================================================================================
 CITATION
@@ -673,6 +944,16 @@ Guide Version: 4.1 (Python 3.10 + PyTorch 2.0.1 + NumPy 1.26.x - WORKING)
 ================================================================================
 
 CHANGELOG:
+v4.2 (2026-02-17):
+- Added APPENDIX A: RTX 50 Series (Blackwell / sm_120) Installation
+- Tested on RTX 5080, Windows 11, MSVC 14.44, System CUDA 12.8
+- Working stack: Python 3.10 + PyTorch 2.8.0+cu128 + System CUDA 12.8
+- Documents why PyTorch 2.9.1 fails on Windows (compiled_autograd.h C2872)
+- Documents why PyTorch <=2.6.x fails on Blackwell (sm_120 not supported)
+- Added Windows nvcc flag patches for 3 rasterization setup.py files
+- PyTorch3D 0.7.9+pt2.8.0cu128 prebuilt wheel URL (MiroPsota)
+- Added Blackwell note in header to redirect sm_120 users to Appendix A
+
 v4.1 (2025-12-03):
 - FINAL WORKING STACK: Python 3.10 + PyTorch 2.0.1 + CUDA 11.8 + NumPy 1.26.x
 - CRITICAL FIX: Pin NumPy<2 and opencv-python<4.12

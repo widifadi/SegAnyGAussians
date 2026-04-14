@@ -46,8 +46,9 @@ Thumbs.db
 diagnose_numpy.py
 run_diagnostics.bat
 
-# Accidental directories
-5.8.0/
+# Accidental files/directories
+5.8.0
+**/build_log.txt
 
 # Docker build artifacts
 *.tar.gz

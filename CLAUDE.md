@@ -1,289 +1,226 @@
-# Claude Conversation History - SegAnyGAussians Windows Fork
+# CLAUDE.md — SegAnyGAussians Development Guide
 
-> 📝 **Note**: This file documents the Windows fork preparation and git workflow.
-> For Docker development workflow, see [`docker/CLAUDE.md`](docker/CLAUDE.md).
->
-> **To continue this conversation**: Share this file with Claude and reference specific sections.
+## Project Context
 
----
+This is a 3D Gaussian Splatting (3DGS) scene segmentation system. Training and inference pipelines are **complete and working**. The goal of this development track is to add a lightweight GUI on top of the existing inference pipeline — do NOT change the core training or rendering code.
 
-## Session Overview
-
-**Date**: 2025-12-03
-**Goal**: Prepare Windows-compatible SegAnyGAussians fork for public release
-**Status**: ✅ Complete - Ready to push to GitHub
-**Branch**: `v2_cu118`
-**Repository**: [widifadi/SegAnyGAussians](https://github.com/widifadi/SegAnyGAussians)
+Hardware context: RTX 5080 (sm_120), CUDA 12.8, Python 3.10, PyTorch 2.8.0+cu128.
 
 ---
 
-## What We Accomplished
+## What NOT to Touch
 
-### 1. Git Workflow Setup
+These files implement the core pipeline and must not be modified:
 
-**Problem**: Many files showing as modified in git status (build artifacts, line endings, submodule changes)
+- `train_scene.py`, `train_contrastive_feature.py` — training pipelines
+- `render.py`, `gaussian_renderer/` — rendering
+- `scene/gaussian_model.py`, `scene/gaussian_model_ff.py` — Gaussian data structures
+- `scene/dataset_readers.py`, `scene/cameras.py`, `scene/colmap_loader.py`
+- `submodules/` — CUDA extensions
+- `third_party/` — SAM
+- `extract_segment_everything_masks.py`, `get_scale.py`, `get_clip_features.py`
+- `clip_utils/` — CLIP/SAM mask generation utilities
+- `arguments/` — training config
+- `utils/` — loss, graphics, image, camera utilities
+- `lpipsPyTorch/`
 
-**Solution**:
-- Created comprehensive `.gitignore` for Python, CUDA, and Docker build artifacts
-- Removed `__pycache__/*.pyc` and `*.egg-info/` from git tracking
-- Organized commits into logical groups
-
-**Artifacts Excluded**:
-- Build artifacts: `__pycache__/`, `*.pyc`, `*.egg-info/`, `build/`
-- Docker images: `*.tar.gz`, `*.tar` (6.8 GB seganygaussians.tar.gz)
-- Temporary files: `diagnose_numpy.py`, `run_diagnostics.bat`, `5.8.0`
-- Backup files: `*_OLD_BACKUP.txt`
-
-### 2. Documentation Cleanup
-
-**Before**:
-- CHANGES_SUMMARY.md: 224 lines (too verbose)
-- NUMPY2_COMPATIBILITY_REPORT.md: 285 lines (too technical for main docs)
-- README.md: Outdated instructions (Python 3.7, wrong environment name)
-- QUICK_START.md: Had placeholder URLs
-
-**After**:
-- CHANGES_SUMMARY.md: **71 lines** (68% reduction) - streamlined summary
-- docs/NUMPY2_COMPATIBILITY_ANALYSIS.md: Moved technical details to docs/ folder
-- README.md: Added prominent Windows fork notice with branch instructions
-- QUICK_START.md: Updated with correct fork URL and branch
-
-### 3. Repository Fixes
-
-**Issue #1: Submodules Not Cloning**
-- Problem: `.gitmodules` used SSH URLs (`git@github.com:...`)
-- Solution: Changed to HTTPS URLs (`https://github.com/...`)
-- Impact: Submodules now clone without SSH keys
-
-**Issue #2: Wrong Branch Cloned**
-- Problem: Default clone gets main/master, not Windows-compatible branch
-- Solution: Added `-b v2_cu118` flag to all clone instructions
-- Impact: Users now get the correct branch with all fixes
-
-**Issue #3: Docker Image Artifacts**
-- Problem: 6.8 GB `seganygaussians.tar.gz` would be committed
-- Solution: Added `*.tar.gz` to .gitignore, kept Docker configs only
-- Impact: Repository stays lightweight
-
-### 4. Attribution Corrections
-
-**simple-knn Windows fix attribution**:
-- Original credit: "Adapted from 3dgs-mcmc"
-- Corrected to: "Adapted from nerfstudio installation guide"
-- Reason: User clarified the actual source
+Do not refactor, rename, or reorganize any existing code unless a bug in it directly blocks the new GUI.
 
 ---
 
-## Final Repository Structure
+## New Feature: Simple Segmentation GUI
+
+**Target file:** `segmentation_gui.py` (new file in repo root)
+
+This is a standalone GUI that replicates the `prompt_segmenting.ipynb` workflow with a proper interface. It is NOT a replacement or rewrite of `saga_gui.py` — it is a simpler, separate tool.
+
+### Framework
+
+Use **PyQt5** with an embedded matplotlib figure for the image canvas. Rationale:
+- Handles click events on images natively
+- No browser required (unlike Gradio)
+- No real-time rasterization loop needed (unlike DearPyGUI)
+- Familiar widget toolkit
+
+Dependencies that are already available in the SAGA conda env: `PyQt5`, `matplotlib`, `numpy`, `torch`. Do NOT add new conda/pip dependencies unless absolutely necessary.
+
+### Workflow the GUI Must Replicate
+
+This mirrors `prompt_segmenting.ipynb` exactly:
 
 ```
-SegAnyGAussians/
-├── .gitignore                         # Comprehensive ignore rules
-├── README.md                          # Updated with Windows fork notice
-├── QUICK_START.md                     # Streamlined Windows guide (248 lines)
-├── CHANGES_SUMMARY.md                 # Concise summary (71 lines)
-├── WINDOWS_INSTALLATION.txt           # Detailed 17-step guide (709 lines)
-├── environment.yml                    # Python 3.10 + PyTorch 2.0.1 + CUDA 11.8
-├── requirements.txt                   # Detailed version constraints
-├── .gitmodules                        # HTTPS URLs for submodules
-├── docker/                            # Docker configs (no .tar.gz)
-│   ├── Dockerfile
-│   ├── CLAUDE.md
-│   └── *.txt (guides)
-├── docs/
-│   └── NUMPY2_COMPATIBILITY_ANALYSIS.md  # Technical analysis
-└── submodules/
-    └── simple-knn/
-        ├── setup.py                   # Windows fix: packages=['simple_knn']
-        └── simple_knn/__init__.py     # Windows DLL loading fix
+Load model paths
+  → load scene GaussianModel from scene_point_cloud.ply
+  → load feature GaussianModel from feature_point_cloud.ply
+  → load scale_gate.pt network
+  → load training camera views (for reference image list)
+Select reference view (from dropdown of training cameras)
+  → render feature map at that view
+  → render RGB image at that view (for display background)
+User clicks point(s) on the image
+  → sample feature at clicked pixel
+  → compute cosine similarity across all pixels
+  → threshold → 2D preview mask
+  → threshold → 3D segmentation (apply to Gaussians)
+Export → save_ply() of segmented Gaussians
 ```
 
----
+### Feature 1: Multi-Object Selection Within Same Class
 
-## Final Commit History (10 commits)
+**What "same class" means here:** multiple spatially separate instances of similar objects (e.g., two chairs). The contrastive feature space encodes appearance/scale similarity, not semantic class labels, so "same class" = objects with visually similar feature vectors.
 
-```
-bf7252c - Update clone instructions to specify v2_cu118 branch
-eda4623 - Fix submodule URLs to use HTTPS instead of SSH
-abc0666 - Update documentation to reference widifadi fork
-8d65977 - Streamline and reorganize documentation
-12387a7 - Add Docker configuration files and update .gitignore
-1fde719 - Add Windows compatibility fixes for simple-knn
-bd88e66 - Fix PyTorch 2.0 and NumPy dtype compatibility
-c0db765 - Add comprehensive Windows installation documentation
-f4aa3eb - Update environment.yml to Python 3.10 + PyTorch 2.0.1 + CUDA 11.8
-46cef04 - Add comprehensive .gitignore for Python and CUDA build artifacts
-```
+**Implementation approach** (already proven in `saga_gui.py` lines 631–660):
+- Maintain a list of query feature vectors
+- Each click appends one 32-dim feature vector to the list
+- Similarity is `max` over all query features (or mean — test both, use max)
+- A "Clear points" button resets the list
 
----
-
-## Key Technical Details
-
-### Code Changes (6 lines total)
-
-**saga_gui.py:552** - PyTorch 2.0 API compatibility
+Key code pattern from `saga_gui.py` to adapt:
 ```python
-# Before:
-eigenvalues, eigenvectors = torch.eig(covariance_matrix, eigenvectors=True)
-
-# After:
-eigenvalues, eigenvectors = torch.linalg.eig(covariance_matrix)
-eigenvalues = torch.abs(eigenvalues.real)
-eigenvectors = eigenvectors[:, idx].real
+# Accumulate: chosen_feature shape (32, N_clicks)
+chosen_feature = torch.cat([chosen_feature, new_feature.unsqueeze(-1)], dim=-1)
+# Similarity: score per pixel = max similarity to any query
+score_map = (feature_map @ chosen_feature).max(dim=-1).values
 ```
 
-**scene/cameras.py:62** + **gaussian_renderer/network_gui.py:74,77**
+**Note:** SAM is not involved in the interactive segmentation at inference time. The interactive segmentation is purely feature-similarity-based. Multi-object selection is entirely feasible and already proven.
+
+### Feature 2: Export Segmented Object as Single PLY
+
+After 3D segmentation (`GaussianModel.segment(mask)` has already been called), the segmented Gaussians are already isolated in memory. Export is:
+
 ```python
-# Added explicit dtype for NumPy 2.x compatibility:
-torch.tensor(..., dtype=torch.float32)
+# The segmented scene model already has only the target Gaussians
+# after segment() has been called
+scene_gaussian_model.save_ply(output_path)
 ```
 
-### Windows-Specific Fixes
+`save_ply()` is defined in `scene/gaussian_model.py` (~line 215). It exports the full Gaussian attributes: xyz, SH coefficients, opacity, scale, rotation. This is a valid `.ply` readable by standard 3DGS viewers.
 
-**simple-knn setup.py**:
+GUI requirement:
+- "Export PLY" button, enabled only after a 3D segmentation has been run
+- File dialog to choose output path
+- After export, offer "Roll back" to restore full scene for another segmentation pass
+
+**Important:** After `segment()`, the model is mutated. Use `roll_back()` before running a new segmentation, or reload models. Maintain a `segmented = False` state flag.
+
+### Feature 3: Skip Open-Vocab / CLIP
+
+Do not include any CLIP-based text prompt functionality. No `clip_utils/` imports in the new GUI.
+
+### Feature 4: High-Resolution Training Support
+
+**Decision: use existing downsampling only, do not change core code.**
+
+The training pipeline already supports `--resolution` flags (`-r 1`, `-r 2`, `-r 4`, `-r 8`) in both `train_scene.py` and `train_contrastive_feature.py`. The `dataset_readers.py` handles this transparently.
+
+For large-area scenes with high-res images, the correct approach is:
+1. Use `--resolution 2` or `--resolution 4` when calling `train_scene.py` and `train_contrastive_feature.py`
+2. Use `--resolution 2` or `--resolution 4` in `extract_segment_everything_masks.py`
+
+Add a simple note in the GUI's "Load Model" section reminding the user to train with `--resolution` flags for large scenes. Do NOT implement patching or any changes to training code — that would change core functionality.
+
+---
+
+## GUI Layout
+
+```
+Window: "SAGA Segmentation"
+┌─────────────────────────────────────────────────────────────┐
+│ [Left Panel - Controls]    │ [Right Panel - Image Canvas]   │
+│                            │                                 │
+│ Model Paths:               │  [Matplotlib figure, click-    │
+│  Scene PLY: [path] [...]   │   able, shows RGB + mask       │
+│  Feature PLY: [path] [..]  │   overlay]                    │
+│  Scale Gate: [path] [...]  │                                 │
+│  Data Path: [path] [...]   │                                 │
+│  [Load Models]             │                                 │
+│                            │                                 │
+│ Reference View:            │                                 │
+│  [Dropdown camera list]    │                                 │
+│  [Render View]             │                                 │
+│                            │                                 │
+│ Segmentation:              │                                 │
+│  Scale: [slider 0-1]       │                                 │
+│  Threshold: [slider 0-1]   │                                 │
+│  [Add Point] [Clear Points]│                                 │
+│  Points: 0 selected        │                                 │
+│  [Run 3D Segment]          │                                 │
+│  [Roll Back]               │                                 │
+│                            │                                 │
+│ Export:                    │                                 │
+│  [Export PLY...]           │                                 │
+│  [Export Mask (.pt)...]    │                                 │
+│                            │                                 │
+│ Status: [status label]     │                                 │
+└─────────────────────────────────────────────────────────────┘
+```
+
+- Canvas click while "Add Point" mode is active → samples feature at pixel → shows point marker → updates similarity preview
+- Similarity preview: semi-transparent red overlay on top of RGB image
+- Scale slider controls scale gate input (same as `saga_gui.py`)
+- Threshold slider controls segmentation cutoff
+
+---
+
+## Key Functions to Reuse (Read These Before Implementing)
+
+| Source | Function/Class | What It Does |
+|--------|---------------|--------------|
+| `scene/gaussian_model.py` | `GaussianModel` | Scene Gaussian storage, `load_ply`, `save_ply`, `segment`, `roll_back` |
+| `scene/gaussian_model_ff.py` | `FeatureGaussianModel` | Feature vectors, same segment/rollback interface |
+| `scene/__init__.py` | `Scene` | Loads scene + cameras from data path |
+| `gaussian_renderer/__init__.py` | `render()` | RGB render from a camera |
+| `gaussian_renderer/feature_renderer.py` | `render_contrastive_feature()` | Feature map render |
+| `arguments/__init__.py` | `ModelParams`, `PipelineParams`, `OptimizationParams` | Config dataclasses for model loading |
+| `utils/sh_utils.py` | `SH2RGB()` | Convert SH DC component to RGB (for feature viz) |
+
+How `prompt_segmenting.ipynb` loads everything — replicate this exactly:
 ```python
-setup(
-    name="simple_knn",
-    packages=['simple_knn'],  # ADDED THIS LINE
-    ...
-)
+# Arguments
+parser = ArgumentParser()
+model = ModelParams(parser)
+pipeline = PipelineParams(parser)
+args = parser.parse_args(["--model_path", MODEL_PATH, "--source_path", SOURCE_PATH])
+
+# Scene (cameras + Gaussians)
+scene = Scene(model.extract(args), GaussianModel(0), load_iteration=SCENE_ITER, shuffle=False)
+
+# Feature model
+feature_gaussians = FeatureGaussianModel(FEATURE_DIM)
+feature_gaussians.load_ply(FEATURE_PCD_PATH)
+
+# Scale gate
+scale_gate = torch.nn.Sequential(torch.nn.Linear(1, FEATURE_DIM), torch.nn.Sigmoid())
+scale_gate.load_state_dict(torch.load(SCALE_GATE_PATH))
+scale_gate = scale_gate.cuda()
 ```
 
-**simple-knn __init__.py** (new file):
-```python
-import os, sys
-try:
-    import torch
-    torch_lib_dir = os.path.join(os.path.dirname(torch.__file__), 'lib')
-    if sys.platform == 'win32' and os.path.exists(torch_lib_dir):
-        os.add_dll_directory(torch_lib_dir)
-except Exception:
-    pass
-from simple_knn._C import *
-```
+---
 
-### Critical Version Constraints
+## Implementation Order (fits in one day)
 
-```bash
-pip install "numpy<2" "opencv-python<4.12"
-```
+1. **Scaffold** (`segmentation_gui.py`): PyQt5 window, left/right panels, all widgets wired to stubs. ~1 hour
+2. **Model loading**: Reuse the notebook's load pattern, triggered by [Load Models] button. ~30 min
+3. **Render view**: Render RGB + feature map for selected camera, display in canvas. ~45 min
+4. **Click → feature sample → 2D preview**: Click handler, feature lookup, similarity heatmap overlay. ~1 hour
+5. **Multi-point accumulation**: Maintain query list, max-similarity over queries, Clear Points. ~30 min
+6. **3D segmentation**: Call `feature_gaussians.segment()` and `scene_gaussians.segment()` with threshold mask. ~30 min
+7. **PLY export**: File dialog → `scene_gaussians.save_ply(path)`. ~20 min
+8. **Roll back + state management**: `roll_back()` on both models, reset query list. ~20 min
+9. **Polish**: Status messages, error handling for missing paths, disable buttons in wrong state. ~30 min
 
-**Reason**: PyTorch 2.0.1 was compiled with NumPy 1.x C API (April 2023) and cannot use NumPy 2.x (released June 2024).
+Total: ~5.5 hours of focused implementation.
 
 ---
 
-## Installation Commands
+## Common Pitfalls
 
-### For Windows Users:
-
-```cmd
-git clone -b v2_cu118 https://github.com/widifadi/SegAnyGAussians.git
-cd SegAnyGAussians
-git submodule update --init --recursive
-conda env create -f environment.yml
-conda activate SAGA
-```
-
-Then follow [QUICK_START.md](QUICK_START.md) for CUDA extension compilation.
-
-### For Linux Users:
-
-Same commands work on Linux! The fork is compatible with both platforms.
-
----
-
-## What Hasn't Changed
-
-✅ **No logic modifications** - Only API compatibility updates
-✅ **All original features work** - Training, segmentation, GUI, rendering
-✅ **Same model format** - Compatible with original SAGA checkpoints
-✅ **Same data format** - Use original SAGA datasets
-
----
-
-## Testing Status
-
-✅ **Tested on**: Windows 11 + RTX 4060 Ti
-✅ **Stack**: Python 3.10 + PyTorch 2.0.1 + CUDA 11.8 + NumPy 1.26.4
-✅ **GUI**: Working (saga_gui.py launches successfully)
-✅ **Submodules**: Clone successfully via HTTPS
-✅ **CUDA Extensions**: All compile successfully
-✅ **simple-knn**: Works with Windows DLL fix
-
----
-
-## Credits
-
-- **Original SAGA**: [Jumpat/SegAnyGAussians](https://github.com/Jumpat/SegAnyGAussians)
-- **PyTorch3D Windows wheels**: [MiroPsota/torch_packages_builder](https://github.com/MiroPsota/torch_packages_builder)
-- **simple-knn Windows fix**: Adapted from [nerfstudio](https://github.com/nerfstudio-project/nerfstudio) installation guide
-- **Windows compatibility work**: [widifadi/SegAnyGAussians](https://github.com/widifadi/SegAnyGAussians)
-
----
-
-## Next Steps After Pushing
-
-1. **Push to GitHub**:
-   ```cmd
-   git push origin v2_cu118
-   ```
-
-2. **Set v2_cu118 as default branch** (optional):
-   - Go to repository settings on GitHub
-   - Change default branch to `v2_cu118`
-   - This ensures users get Windows-compatible version by default
-
-3. **Create a release** (optional):
-   - Tag: `v2-cu118-windows`
-   - Title: "Windows-Compatible Release (Python 3.10 + PyTorch 2.0.1)"
-   - Include CHANGES_SUMMARY.md in release notes
-
-4. **Update repository description**:
-   - Add: "Windows-compatible fork with Python 3.10 + PyTorch 2.0.1 + CUDA 11.8"
-
----
-
-## Troubleshooting Reference
-
-### If submodules don't clone:
-```cmd
-git submodule sync
-git submodule update --init --recursive --force
-```
-
-### If simple-knn fails to import:
-- Check `submodules/simple-knn/setup.py` has `packages=['simple_knn']`
-- Check `submodules/simple-knn/simple_knn/__init__.py` exists
-- Recompile: `cd submodules/simple-knn && pip install --no-build-isolation .`
-
-### If NumPy errors occur:
-```cmd
-pip install "numpy<2" "opencv-python<4.12"
-```
-
-### If PyTorch 2.0 API errors occur:
-- Check saga_gui.py:552 uses `torch.linalg.eig()` not `torch.eig()`
-- Check cameras.py:62 and network_gui.py:74,77 have `dtype=torch.float32`
-
----
-
-## Previous Session Summary
-
-The previous conversation (documented in the system reminder) covered:
-1. Initial installation attempts with PyTorch3D
-2. Discovery of MiroPsota's prebuilt PyTorch3D wheels
-3. NumPy 2.x compatibility investigation
-4. Decision to use Python 3.10 + PyTorch 2.0.1 stack
-5. Code compatibility fixes (torch.eig → torch.linalg.eig)
-6. simple-knn Windows DLL fix
-7. NumPy <2 and opencv-python <4.12 version constraints
-8. Environment.yml and documentation creation
-
-This session focused on:
-- Git workflow and repository cleanup
-- Documentation organization and streamlining
-- Final touches for public release
-
----
-
-**Repository Ready for Public Use!** 🎉
+- Feature render returns a `(H, W, 32)` tensor. Normalize before similarity: `feats = feats / feats.norm(dim=-1, keepdim=True)`
+- Scale gate input must be a `(1, 1)` CUDA float tensor matching the slider value
+- After `segment()`, the model's `_xyz`, `_features_dc` etc. are replaced with the subset. `roll_back()` restores originals — keep the original PLY paths available for a full reload if needed
+- Camera views from `scene.getTrainCameras()` — use these for the dropdown; each has `.image_name` attribute
+- `render()` returns a dict; RGB image is at key `"render"` with shape `(3, H, W)`, range [0, 1]
+- `render_contrastive_feature()` returns dict; feature map is at key `"render"` with shape `(32, H, W)`
+- For the matplotlib canvas, use `FigureCanvasQTAgg` from `matplotlib.backends.backend_qtagg`
+- Run all model inference in a `QThread` worker to avoid freezing the UI

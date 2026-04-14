@@ -46,6 +46,7 @@ matplotlib>=3.7
 # GUI and image processing
 pillow>=10.0
 dearpygui>=2.0
+PyQt5>=5.15          # required by segmentation_gui.py (lightweight segmentation GUI)
 
 # ML and processing
 tqdm>=4.65
