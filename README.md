@@ -104,6 +104,27 @@ python get_scale.py --image_root <path to the scene data> --model_path <path to 
 ```
 Note that sometimes the downsample is essential due to the limited GPU memory.
 
+### Large-image / Aerial Photogrammetry (Tiling)
+
+For high-resolution datasets (e.g. aerial photogrammetry with images larger than ~3000 px on a side), SAM will run out of GPU memory processing the whole image at once. Use the tiled extraction script instead — it produces the same `sam_masks/` output format:
+
+```bash
+python extract_segment_tiled_masks.py \
+    --image_root <path to the scene data> \
+    --sam_checkpoint_path <path to the pre-trained SAM model> \
+    --tile_size 3000 \
+    --overlap 300
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--tile_size` | `3000` | Max tile width/height in pixels. Images smaller than this are processed whole (same behaviour as the original script). |
+| `--overlap` | `300` | Overlap between adjacent tiles in pixels. Prevents missing objects at tile boundaries. |
+| `--downsample` | `1` | Same as the original script (applied per tile). |
+| `--downsample_type` | `image` | `image` = resize before SAM; `mask` = resize after SAM. |
+
+After this step, continue with `get_scale.py` as usual — no other pipeline changes are needed.
+
 If you want to try the open-vocabulary segmentation, extract the CLIP features first:
 ```bash
 python get_clip_features.py --image_root <path to the scene data>
