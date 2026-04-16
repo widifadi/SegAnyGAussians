@@ -96,16 +96,85 @@ if __name__ == '__main__':
     assert os.path.join(dataset.source_path, 'sam_masks') and "Please run extract_segment_everything_masks first."
 
     from tqdm import tqdm
+
+    IMAGE_DIR    = os.path.join(dataset.source_path, 'images')
+    SAM_MASK_DIR = os.path.join(dataset.source_path, 'sam_masks')
+
+    # ------------------------------------------------------------------
+    # Memory estimation: predict RAM for pre-loading all masks at once,
+    # and for the batched upsample+erosion step inside the render loop.
+    # Sample one .pt file to get (N_masks, H, W) and one image for
+    # render resolution, then extrapolate.
+    # ------------------------------------------------------------------
+    use_lazy     = False
+    use_per_mask = False
+    sample_pts = sorted(f for f in os.listdir(SAM_MASK_DIR) if f.endswith('.pt'))
+    if sample_pts:
+        sample_mask = torch.load(os.path.join(SAM_MASK_DIR, sample_pts[0]))
+        n_masks_sample, h_mask, w_mask = sample_mask.shape
+        del sample_mask
+
+        # Estimate render resolution from the first image in IMAGE_DIR.
+        image_files = sorted(f for f in os.listdir(IMAGE_DIR) if not f.startswith('.'))
+        n_images = len(image_files)
+        h_render, w_render = h_mask, w_mask  # fallback: assume same as mask
+        if image_files:
+            try:
+                _img = cv2.imread(os.path.join(IMAGE_DIR, image_files[0]))
+                if _img is not None:
+                    h_render, w_render = _img.shape[:2]
+                del _img
+            except Exception:
+                pass
+
+        bytes_est     = n_images * n_masks_sample * h_mask * w_mask * 4   # float32
+        gb_est        = bytes_est / (1024 ** 3)
+
+        # Batched upsample + conv2d: 2 tensors of (N_masks, 1, H_render, W_render) float32.
+        # 1.5× safety factor accounts for torch.conv2d workspace buffers (observed ~1.3× overhead).
+        gb_batch_mask = n_masks_sample * h_render * w_render * 4 * 2 * 1.5 / (1024 ** 3)
+
+        print(f"\n{'='*60}")
+        print(f"  get_scale memory estimate (pre-load mode)")
+        print(f"    Images        : {n_images}")
+        print(f"    Masks / image : ~{n_masks_sample}  (from '{sample_pts[0]}')")
+        print(f"    Mask size     : {h_mask} x {w_mask}")
+        print(f"    Render size   : {h_render} x {w_render}")
+        print(f"    Estimated RAM : {gb_est:.1f} GB  (pre-load all masks)")
+        print(f"    Batch mask RAM: {gb_batch_mask:.1f} GB  (per-view upsample+erosion, incl. overhead)")
+
+        try:
+            import psutil
+            avail_gb = psutil.virtual_memory().available / (1024 ** 3)
+            total_gb = psutil.virtual_memory().total   / (1024 ** 3)
+            print(f"    Available RAM : {avail_gb:.1f} GB  /  {total_gb:.1f} GB total")
+            use_lazy     = gb_est        > avail_gb * 0.7
+            use_per_mask = gb_batch_mask > avail_gb * 0.15
+        except ImportError:
+            # psutil not available — fall back to conservative hard thresholds
+            use_lazy     = gb_est        > 8.0
+            use_per_mask = gb_batch_mask > 4.0
+            print(f"    (psutil not found; using 8 GB / 4 GB thresholds)")
+
+        print(f"    Mask load     : {'LAZY'     if use_lazy     else 'PRE-LOAD'}")
+        print(f"    Mask ops      : {'PER-MASK' if use_per_mask else 'BATCHED'}")
+        print(f"{'='*60}\n")
+
+    # ------------------------------------------------------------------
+    # Pre-load path (original behaviour): load every image's masks into
+    # a dict before the render loop.  Fast but memory-intensive.
+    # ------------------------------------------------------------------
     images_masks = {}
-    for i, image_path in tqdm(enumerate(sorted(os.listdir(os.path.join(dataset.source_path, 'images'))))):
-        # print(image_path)
-        image = cv2.imread(os.path.join(os.path.join(dataset.source_path, 'images'), image_path))
-        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        masks = torch.load(os.path.join(os.path.join(dataset.source_path, 'sam_masks'), image_path.replace('jpg', 'pt').replace('JPG', 'pt').replace('png', 'pt')))
-        # N_mask, C
-
-        images_masks[image_path.split('.')[0]] = masks.cpu().float()
-
+    if not use_lazy:
+        for i, image_path in tqdm(enumerate(sorted(os.listdir(IMAGE_DIR))),
+                                  desc="Pre-loading masks"):
+            image = cv2.imread(os.path.join(IMAGE_DIR, image_path))
+            image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            masks = torch.load(os.path.join(
+                SAM_MASK_DIR,
+                image_path.replace('jpg', 'pt').replace('JPG', 'pt').replace('png', 'pt')))
+            # N_mask, C
+            images_masks[image_path.split('.')[0]] = masks.cpu().float()
 
     OUTPUT_DIR = os.path.join(args.image_root, 'mask_scales')
     os.makedirs(OUTPUT_DIR, exist_ok=True)
@@ -116,16 +185,24 @@ if __name__ == '__main__':
 
     for it, view in tqdm(enumerate(cameras)):
 
-        rendered_pkg = gaussian_renderer.render_with_depth(view, scene_gaussians, pipeline.extract(args), background)
+        with torch.no_grad():
+            rendered_pkg = gaussian_renderer.render_with_depth(view, scene_gaussians, pipeline.extract(args), background)
+        torch.cuda.synchronize()  # surface async CUDA errors as Python exceptions
 
         depth = rendered_pkg['depth']
 
-        # plt.imshow(depth.detach().cpu().squeeze().numpy())
-        corresponding_masks = images_masks[view.image_name]
+        # Lazy-load path: load this view's masks on demand, then discard.
+        if use_lazy:
+            corresponding_masks = torch.load(
+                os.path.join(SAM_MASK_DIR, view.image_name + '.pt')).cpu().float()
+        else:
+            corresponding_masks = images_masks[view.image_name]
 
         # generate_grid_index(depth.squeeze())[50, 1]
 
         depth = depth.cpu().squeeze()
+        del rendered_pkg  # free GPU tensor immediately
+        torch.cuda.empty_cache()
 
         grid_index = generate_grid_index(depth)
 
@@ -142,20 +219,52 @@ if __name__ == '__main__':
         points_in_3D[:,:,0] = (grid_index[:,:,0] - cx) * depth / fx
         points_in_3D[:,:,1] = (grid_index[:,:,1] - cy) * depth / fy
 
-        upsampled_mask = torch.nn.functional.interpolate(corresponding_masks.unsqueeze(1), mode = 'bilinear', size = (depth.shape[0], depth.shape[1]), align_corners = False)
+        if not use_per_mask:
+            # ----------------------------------------------------------
+            # Original batched path: upsample + erode all masks at once.
+            # Fast but requires (N_masks × H_render × W_render × 4 × 2) RAM.
+            # ----------------------------------------------------------
+            upsampled_mask = torch.nn.functional.interpolate(corresponding_masks.unsqueeze(1), mode = 'bilinear', size = (depth.shape[0], depth.shape[1]), align_corners = False)
+            del corresponding_masks
 
-        eroded_masks = torch.conv2d(
-            upsampled_mask.float(),
-            torch.full((3, 3), 1.0).view(1, 1, 3, 3),
-            padding=1,
-        )
-        eroded_masks = (eroded_masks >= 5).squeeze()  # (num_masks, H, W)
+            eroded_masks = torch.conv2d(
+                upsampled_mask.float(),
+                torch.full((3, 3), 1.0).view(1, 1, 3, 3),
+                padding=1,
+            )
+            del upsampled_mask
+            eroded_masks = (eroded_masks >= 5).squeeze()  # (num_masks, H, W)
 
-        scale = torch.zeros(len(corresponding_masks))
-        for mask_id in range(len(corresponding_masks)):
-            
-            point_in_3D_in_mask = points_in_3D[eroded_masks[mask_id] == 1]
+            scale = torch.zeros(len(eroded_masks) if eroded_masks.dim() == 3 else 1)
+            for mask_id in range(scale.shape[0]):
+                mask_slice = eroded_masks[mask_id] if eroded_masks.dim() == 3 else eroded_masks
+                point_in_3D_in_mask = points_in_3D[mask_slice == 1]
 
-            scale[mask_id] = (point_in_3D_in_mask.std(dim=0) * 2).norm()
+                scale[mask_id] = (point_in_3D_in_mask.std(dim=0) * 2).norm()
+
+            del eroded_masks, points_in_3D
+
+        else:
+            # ----------------------------------------------------------
+            # Per-mask path: upsample + erode one mask at a time.
+            # Uses only ~(H_render × W_render × 4 × 2) RAM per step.
+            # ----------------------------------------------------------
+            n_masks = corresponding_masks.shape[0]
+            erode_kernel = torch.full((3, 3), 1.0).view(1, 1, 3, 3)
+            scale = torch.zeros(n_masks)
+
+            for mask_id in range(n_masks):
+                m = corresponding_masks[mask_id:mask_id + 1].unsqueeze(1)  # (1, 1, h, w)
+                m = torch.nn.functional.interpolate(
+                    m, mode='bilinear',
+                    size=(depth.shape[0], depth.shape[1]),
+                    align_corners=False,
+                )
+                m = torch.conv2d(m.float(), erode_kernel, padding=1)
+                m = (m >= 5).squeeze()  # (H, W)
+                point_in_3D_in_mask = points_in_3D[m == 1]
+                scale[mask_id] = (point_in_3D_in_mask.std(dim=0) * 2).norm()
+
+            del corresponding_masks, points_in_3D
 
         torch.save(scale, os.path.join(OUTPUT_DIR, view.image_name + '.pt'))

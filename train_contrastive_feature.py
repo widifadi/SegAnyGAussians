@@ -74,7 +74,9 @@ def training(dataset, opt, pipe, iteration, saving_iterations, checkpoint_iterat
 
     feature_gaussians = FeatureGaussianModel(dataset.feature_dim)
 
-    sample_rate = 0.2 if 'Replica' in dataset.source_path else 1.0
+    # Don't delete the following line to preserve old logic
+    # sample_rate = 0.2 if 'Replica' in dataset.source_path else 1.0
+    sample_rate = 0.4
     scene = Scene(dataset, gaussians, feature_gaussians, load_iteration=iteration, shuffle=False, target='contrastive_feature', mode='train', sample_rate=sample_rate)
 
     feature_gaussians.change_to_segmentation_mode(opt, "contrastive_feature", fixed_feature=False)
