@@ -448,14 +448,26 @@ class SegmentationGUI(QMainWindow):
         train_iter_spin.setSingleStep(1000)
 
         rays_spin = QSpinBox()
-        rays_spin.setRange(100, 10_000)
-        rays_spin.setValue(1000)
-        rays_spin.setSingleStep(100)
+        rays_spin.setRange(10, 10_000)
+        rays_spin.setValue(50)
+        rays_spin.setSingleStep(50)
+
+        scale_aware_spin = QSpinBox()
+        scale_aware_spin.setRange(-1, 32)
+        scale_aware_spin.setValue(16)
+        scale_aware_spin.setToolTip("-1 = adaptive (full scale gate); 1–31 = fixed partial gate")
+
+        smooth_k_spin = QSpinBox()
+        smooth_k_spin.setRange(1, 32)
+        smooth_k_spin.setValue(8)
+        smooth_k_spin.setToolTip("KNN neighbours for feature smoothing at save time; lower = less VRAM")
 
         dlg.add_param("Model path:",                   QLabel(model or "(not set)"))
         dlg.add_param("Load 3DGS from iteration:",     scene_iter_spin)
         dlg.add_param("Contrastive train iterations:", train_iter_spin)
         dlg.add_param("Sampled rays per iter:",        rays_spin)
+        dlg.add_param("Scale aware dim:",              scale_aware_spin)
+        dlg.add_param("Smooth K (save-time KNN):",     smooth_k_spin)
 
         def build_cmd():
             if not model:
@@ -467,6 +479,8 @@ class SegmentationGUI(QMainWindow):
                 "--iterations",        str(train_iter_spin.value()),
                 "--num_sampled_rays",  str(rays_spin.value()),
                 "--iteration",         str(scene_iter_spin.value()),
+                "--scale_aware_dim",   str(scale_aware_spin.value()),
+                "--smooth_K",          str(smooth_k_spin.value()),
             ]
 
         def _on_done(_):
