@@ -21,6 +21,7 @@ The official implementation of [SAGA (Segment Any 3D GAussians)](https://arxiv.o
 > - 📋 See [docs/CHANGES_SUMMARY.md](docs/CHANGES_SUMMARY.md) for fork changes
 > - 🔬 See [docs/NUMPY2_COMPATIBILITY_REPORT.md](docs/NUMPY2_COMPATIBILITY_REPORT.md) for compatibility analysis
 > - 🖥️ See [docs/gui_notebook_comparison.md](docs/gui_notebook_comparison.md) for GUI vs notebook math
+> - 🔁 See [docs/pipeline_data_flow.md](docs/pipeline_data_flow.md) for SAM masks → features pipeline explained
 >
 > **Original repository**: [Jumpat/SegAnyGAussians](https://github.com/Jumpat/SegAnyGAussians)
 
