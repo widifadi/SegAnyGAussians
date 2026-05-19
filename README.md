@@ -18,7 +18,9 @@ The official implementation of [SAGA (Segment Any 3D GAussians)](https://arxiv.o
 > - ✅ Windows 10/11 tested and working
 > - ✅ Streamlined installation (~1 hour)
 > - 📖 See [QUICK_START.md](QUICK_START.md) for Windows installation
-> - 📋 See [CHANGES_SUMMARY.md](CHANGES_SUMMARY.md) for details
+> - 📋 See [docs/CHANGES_SUMMARY.md](docs/CHANGES_SUMMARY.md) for fork changes
+> - 🔬 See [docs/NUMPY2_COMPATIBILITY_REPORT.md](docs/NUMPY2_COMPATIBILITY_REPORT.md) for compatibility analysis
+> - 🖥️ See [docs/gui_notebook_comparison.md](docs/gui_notebook_comparison.md) for GUI vs notebook math
 >
 > **Original repository**: [Jumpat/SegAnyGAussians](https://github.com/Jumpat/SegAnyGAussians)
 

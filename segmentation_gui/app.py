@@ -462,12 +462,18 @@ class SegmentationGUI(QMainWindow):
         smooth_k_spin.setValue(8)
         smooth_k_spin.setToolTip("KNN neighbours for feature smoothing at save time; lower = less VRAM")
 
+        res_combo = QComboBox()
+        res_combo.addItems(["1", "2", "4", "8", "16", "32"])
+        res_combo.setCurrentText("8")
+        res_combo.setToolTip("Render downsample factor — higher = less VRAM. Use 16/32 for very high-res images (>8 MP)")
+
         dlg.add_param("Model path:",                   QLabel(model or "(not set)"))
         dlg.add_param("Load 3DGS from iteration:",     scene_iter_spin)
         dlg.add_param("Contrastive train iterations:", train_iter_spin)
         dlg.add_param("Sampled rays per iter:",        rays_spin)
         dlg.add_param("Scale aware dim:",              scale_aware_spin)
         dlg.add_param("Smooth K (save-time KNN):",     smooth_k_spin)
+        dlg.add_param("Render resolution divisor:",    res_combo)
 
         def build_cmd():
             if not model:
@@ -481,6 +487,7 @@ class SegmentationGUI(QMainWindow):
                 "--iteration",         str(scene_iter_spin.value()),
                 "--scale_aware_dim",   str(scale_aware_spin.value()),
                 "--smooth_K",          str(smooth_k_spin.value()),
+                "--resolution",        res_combo.currentText(),
             ]
 
         def _on_done(_):

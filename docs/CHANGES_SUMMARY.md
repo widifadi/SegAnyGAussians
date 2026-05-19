@@ -47,11 +47,11 @@ pip install "numpy<2" "opencv-python<4.12"
 
 ## Installation
 
-📖 **Quick Start**: See [QUICK_START.md](QUICK_START.md) for streamlined Windows installation (~1 hour)
+📖 **Quick Start**: See [QUICK_START.md](../QUICK_START.md) for streamlined Windows installation (~1 hour)
 
-📚 **Detailed Guide**: See [WINDOWS_INSTALLATION.txt](WINDOWS_INSTALLATION.txt) for complete 17-step guide with troubleshooting
+📚 **Detailed Guide**: See [WINDOWS_INSTALLATION.txt](../WINDOWS_INSTALLATION.txt) for complete 17-step guide with troubleshooting
 
-🔬 **Technical Analysis**: See [docs/NUMPY2_COMPATIBILITY_ANALYSIS.md](docs/NUMPY2_COMPATIBILITY_ANALYSIS.md) for detailed compatibility analysis
+🔬 **Technical Analysis**: See [NUMPY2_COMPATIBILITY_REPORT.md](NUMPY2_COMPATIBILITY_REPORT.md) for detailed compatibility analysis
 
 ---
 
