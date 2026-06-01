@@ -359,7 +359,16 @@ class FeatureGaussianModel:
             select_idx = self.feature_smooth_map["m"][:, select_point]
             ret = normed_features[select_idx, :].mean(dim = 1)
         else:
-            ret = normed_features[self.feature_smooth_map["m"], :].mean(dim = 1)
+            try:
+                ret = normed_features[self.feature_smooth_map["m"], :].mean(dim = 1)
+            except torch.cuda.OutOfMemoryError:
+                torch.cuda.empty_cache()
+                idx = self.feature_smooth_map["m"]
+                CHUNK = 200_000
+                ret = torch.empty_like(normed_features)
+                for start in range(0, normed_features.shape[0], CHUNK):
+                    end = min(start + CHUNK, normed_features.shape[0])
+                    ret[start:end] = normed_features[idx[start:end], :].mean(dim = 1)
 
         return ret
 
