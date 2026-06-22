@@ -45,7 +45,8 @@ def render_set(model_path, name, iteration, views, gaussians, pipeline, backgrou
 
         if target == 'seg':
             assert precomputed_mask is not None and 'Rendering 2D segmentation mask requires a precomputed mask.'
-            mask_res = render_mask(view, gaussians, pipeline, background, precomputed_mask=precomputed_mask)
+            # mask_res = render_mask(view, gaussians, pipeline, background, precomputed_mask=precomputed_mask)
+            mask_res = render_mask(view, gaussians, pipeline, background, precomputed_mask=precomputed_mask.float())
 
         rendering = res["render"]
         gt = view.original_image[0:3, :, :]
