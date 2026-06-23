@@ -259,6 +259,22 @@ class SegmentationGUI(QMainWindow):
         btn_row.addWidget(clear_all_btn)
         v.addLayout(btn_row)
 
+        prompt_io_row = QHBoxLayout()
+        self.save_prompts_btn = QPushButton("Save Prompts…")
+        self.save_prompts_btn.setEnabled(False)
+        self.save_prompts_btn.setToolTip(
+            "Save accumulated click feature vectors to disk (use before Run 3D Segment "
+            "so they survive an OOM, or reuse in a later session / via CLI).")
+        self.save_prompts_btn.clicked.connect(self._save_prompts)
+        prompt_io_row.addWidget(self.save_prompts_btn)
+        self.load_prompts_btn = QPushButton("Load Prompts…")
+        self.load_prompts_btn.setEnabled(False)
+        self.load_prompts_btn.setToolTip(
+            "Load previously saved prompt feature vectors and append them to the current set.")
+        self.load_prompts_btn.clicked.connect(self._load_prompts)
+        prompt_io_row.addWidget(self.load_prompts_btn)
+        v.addLayout(prompt_io_row)
+
         self.segment_3d_btn = QPushButton("Run 3D Segment")
         self.segment_3d_btn.setEnabled(False)
         self.segment_3d_btn.clicked.connect(self._run_3d_segment)
@@ -552,6 +568,7 @@ class SegmentationGUI(QMainWindow):
         total   = len(self.click_raw_features)
         current = len(self.click_points)
         self.points_lbl.setText(f"Points: {total} total ({current} on this view)")
+        self.save_prompts_btn.setEnabled(total > 0)
 
     def _set_controls_enabled(self, has_model: bool, has_render: bool, has_segment: bool):
         self.view_combo.setEnabled(has_model)
@@ -559,6 +576,7 @@ class SegmentationGUI(QMainWindow):
         self.click_mode_btn.setEnabled(has_render)
         self.segment_3d_btn.setEnabled(has_render and len(self.click_raw_features) > 0)
         self.rollback_btn.setEnabled(has_segment)
+        self.load_prompts_btn.setEnabled(has_model)
         self.export_ply_btn.setEnabled(has_segment)
         self.export_mask_btn.setEnabled(has_segment)
 
@@ -829,6 +847,51 @@ class SegmentationGUI(QMainWindow):
         self._display_image(overlay=mask)
 
     # ------------------------------------------------------------------
+    # Save / load prompts
+    # ------------------------------------------------------------------
+
+    def _save_prompts(self):
+        if not self.click_raw_features:
+            return
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Save Prompts", "prompts.pt", "PyTorch files (*.pt)")
+        if not path:
+            return
+        try:
+            prompts = torch.stack([f.cpu() for f in self.click_raw_features])  # (N, 32)
+            torch.save(prompts, path)
+            self._set_status(
+                f"Saved {len(self.click_raw_features)} prompt(s) → {os.path.basename(path)}")
+        except Exception as exc:
+            QMessageBox.critical(self, "Save Error", str(exc))
+
+    def _load_prompts(self):
+        if self.scene_model is None:
+            return
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Load Prompts", "", "PyTorch files (*.pt)")
+        if not path:
+            return
+        try:
+            prompts = torch.load(path, map_location="cpu")  # (N, 32)
+            if prompts.dim() != 2 or prompts.shape[1] != self.FEATURE_DIM:
+                QMessageBox.critical(
+                    self, "Shape Mismatch",
+                    f"Expected (N, {self.FEATURE_DIM}) tensor, got {tuple(prompts.shape)}.\n"
+                    "Only files saved with 'Save Prompts' can be loaded here.")
+                return
+            self.click_points = []
+            self.click_raw_features = [prompts[i] for i in range(prompts.shape[0])]
+            self._update_points_label()
+            self.segment_3d_btn.setEnabled(self.raw_feature_map is not None)
+            self._set_status(
+                f"Loaded {prompts.shape[0]} prompt(s) from {os.path.basename(path)}.")
+            if self.raw_feature_map is not None:
+                self._update_similarity_preview()
+        except Exception as exc:
+            QMessageBox.critical(self, "Load Error", str(exc))
+
+    # ------------------------------------------------------------------
     # Clear points
     # ------------------------------------------------------------------
 
@@ -877,9 +940,21 @@ class SegmentationGUI(QMainWindow):
                 feat_pts = feat_pts * gates
                 feat_pts = torch.nn.functional.normalize(feat_pts, dim=-1, p=2)
 
-                score_pts = feat_pts @ chosen          # (N_pts, N_clicks)
-                score_pts = (score_pts + 1.0) / 2.0
-                mask_3d   = (score_pts > thresh).any(dim=-1)  # (N_pts,) bool
+                try:
+                    # Original fast path: single (N_pts × N_clicks) matrix multiply.
+                    score_pts = feat_pts @ chosen
+                    score_pts = (score_pts + 1.0) / 2.0
+                    mask_3d   = (score_pts > thresh).any(dim=-1)
+                except torch.cuda.OutOfMemoryError:
+                    # Chunked fallback for large scenes / many prompts.
+                    torch.cuda.empty_cache()
+                    CHUNK   = 500_000
+                    mask_3d = torch.zeros(feat_pts.shape[0], dtype=torch.bool, device="cuda")
+                    for start in range(0, feat_pts.shape[0], CHUNK):
+                        end   = min(start + CHUNK, feat_pts.shape[0])
+                        chunk = feat_pts[start:end] @ chosen
+                        chunk = (chunk + 1.0) / 2.0
+                        mask_3d[start:end] = (chunk > thresh).any(dim=-1)
             return mask_3d
 
         self._worker = Worker(_do_segment)
